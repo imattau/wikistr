@@ -20,6 +20,7 @@
   import RelayItem from '$components/RelayItem.svelte';
   import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
   import { pool } from '@nostr/gadgets/global';
+  import New from './New.svelte';
 
   interface Props {
     createChild: (card: Card) => void;
@@ -63,6 +64,10 @@
       actualEvent: result,
       relayHints: seenCache[result.id] || []
     } as ArticleCard);
+  }
+
+  function replaceNewCard(newCard: Card) {
+    createChild(newCard);
   }
 
   function restart() {
@@ -173,6 +178,10 @@
       >Login</button
     >
   {/if}
+</div>
+
+<div class="my-6 p-4 border border-stone-200 rounded-lg bg-stone-50/50">
+  <New {replaceNewCard} />
 </div>
 
 <div class="mb-2 font-bold text-4xl">

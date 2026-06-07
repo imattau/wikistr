@@ -77,6 +77,4 @@
 
   <!-- this is just empty -->
   {@render children?.()}
-
-  <CardElement card={{ type: 'new', id: -1 }} />
 </div>
