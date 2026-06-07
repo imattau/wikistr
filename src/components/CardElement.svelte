@@ -98,7 +98,7 @@
   function toURL(card: Card): string | null {
     switch (card.type) {
       case 'find':
-        return encodeURIComponent(card.data);
+        return encodeURIComponent(encodeURIComponent(card.data));
       case 'article':
         return card.data.join('*');
       case 'relay':
