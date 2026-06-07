@@ -28,7 +28,7 @@
 
   function handleWikilinkClick() {
     if (createChild) {
-      createChild({ id: next(), type: 'find', data: wikitarget, preferredAuthors } as SearchCard);
+      createChild({ id: next(), type: 'find', data: wikitarget, preferredAuthors, redirect: true } as SearchCard);
     }
   }
 </script>

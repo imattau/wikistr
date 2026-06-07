@@ -146,8 +146,35 @@
           onevent(evt) {
             tried = true;
 
+            const shouldRedirect = searchCard.redirect !== false;
+
+            if (shouldRedirect && !isTagQuery && searchCard.preferredAuthors.includes(evt.pubkey)) {
+              // we found an exact match that fits the list of preferred authors
+              // jump straight into it
+              redirected = true;
+              if (redirectTimeout) clearTimeout(redirectTimeout);
+              openArticle(evt, undefined, true);
+            }
+
             if (addUniqueTaggedReplaceable(results, evt)) {
               update();
+
+              // If we have not redirected yet, check if this is an exact match and schedule a fallback redirect
+              if (shouldRedirect && !isTagQuery && !redirected && getTagOr(evt, 'd') === normalizeIdentifier(query)) {
+                if (!redirectTimeout) {
+                  redirectTimeout = setTimeout(() => {
+                    if (redirected) return;
+                    // Find the best exact match from results (sorted by WoT)
+                    const exactMatches = results.filter(
+                      (r) => getTagOr(r, 'd') === normalizeIdentifier(query)
+                    );
+                    if (exactMatches.length > 0) {
+                      redirected = true;
+                      openArticle(exactMatches[0], undefined, true);
+                    }
+                  }, 800);
+                }
+              }
             }
           },
           oneose,
@@ -237,6 +264,7 @@
       // update stored card state
       searchCard.data = normalizeIdentifier(query);
       searchCard.results = undefined;
+      searchCard.redirect = false;
 
       // redo the query
       debouncedPerformSearch();

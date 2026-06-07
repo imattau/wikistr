@@ -20,7 +20,8 @@
         id: next(),
         type: 'find',
         data: normalizeIdentifier(query),
-        preferredAuthors: []
+        preferredAuthors: [],
+        redirect: false
       };
       replaceNewCard(newCard);
       query = '';

@@ -62,6 +62,7 @@ export type SearchCard = {
   preferredAuthors: string[];
   results?: NostrEvent[];
   seenCache?: { [id: string]: string[] };
+  redirect?: boolean;
 };
 
 export type ArticleCard = {
