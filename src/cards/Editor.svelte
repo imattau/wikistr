@@ -6,10 +6,12 @@
   import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
   import { wikiKind, gitPatchKind, account, signer } from '$lib/nostr';
   import type { ArticleCard, Card, EditorCard, EditorData } from '$lib/types.ts';
+  import { naddrEncode } from '@nostr/tools/nip19';
   import {
     getTagOr,
     next,
     turnWikilinksIntoAsciidocLinks,
+    appendLinkMacroToNostrLinks,
     unique,
     urlWithoutScheme
   } from '$lib/utils';
@@ -100,7 +102,7 @@
     }
   });
 
-  function insertLink(targetTitle: string) {
+  function insertLink(targetTitle: string, naddr?: string) {
     if (!textareaEl) return;
     const start = textareaEl.selectionStart;
     const end = textareaEl.selectionEnd;
@@ -108,10 +110,15 @@
     const selection = text.substring(start, end);
 
     let linkText = '';
-    if (selection) {
-      linkText = `[[${targetTitle}|${selection}]]`;
+    if (naddr) {
+      const label = selection || targetTitle;
+      linkText = `nostr:${naddr}[${label}]`;
     } else {
-      linkText = `[[${targetTitle}]]`;
+      if (selection) {
+        linkText = `[[${targetTitle}|${selection}]]`;
+      } else {
+        linkText = `[[${targetTitle}]]`;
+      }
     }
 
     data.content = text.substring(0, start) + linkText + text.substring(end);
@@ -313,7 +320,11 @@
               {#each lookupResults as res (res.id)}
                 <button
                   type="button"
-                  onclick={() => insertLink(getTagOr(res, 'title') || getTagOr(res, 'd'))}
+                  onclick={() => {
+                    const d = getTagOr(res, 'd');
+                    const naddr = naddrEncode({ pubkey: res.pubkey, kind: res.kind, identifier: d });
+                    insertLink(getTagOr(res, 'title') || d, naddr);
+                  }}
                   class="w-full text-left p-2 hover:bg-stone-50 text-xs font-medium text-stone-700 flex justify-between items-center focus:outline-none transition-colors border-none"
                 >
                   <span class="font-semibold text-indigo-700">{getTagOr(res, 'title') || getTagOr(res, 'd')}</span>
@@ -337,7 +348,7 @@
       {#if previewing}
         <div class="prose prose-p:my-0 prose-li:my-0">
           <SvelteAsciidoc
-            source={turnWikilinksIntoAsciidocLinks(data.content)}
+            source={appendLinkMacroToNostrLinks(turnWikilinksIntoAsciidocLinks(data.content))}
             naturalRenderers={{ a: WikilinkComponent as any }}
           />
         </div>

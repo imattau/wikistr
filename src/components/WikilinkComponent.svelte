@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { decode } from '@nostr/tools/nip19';
   import type { SearchCard, Card } from '$lib/types';
   import { next } from '$lib/utils';
   import { getExtra } from 'svelte-asciidoc';
@@ -26,9 +27,35 @@
     wikitarget = href.substring(9);
   }
 
+  let isNaddr = false;
+  let naddrData: any = null;
+
+  if (href && href.startsWith('nostr:naddr1')) {
+    try {
+      const decoded = decode(href.replace('nostr:', ''));
+      if (decoded.type === 'naddr') {
+        isNaddr = true;
+        naddrData = decoded.data;
+      }
+    } catch (e) {
+      console.error('Failed to decode naddr:', e);
+    }
+  }
+
   function handleWikilinkClick() {
     if (createChild) {
       createChild({ id: next(), type: 'find', data: wikitarget, preferredAuthors, redirect: true } as SearchCard);
+    }
+  }
+
+  function handleNaddrClick() {
+    if (createChild && naddrData) {
+      createChild({
+        id: next(),
+        type: 'article',
+        data: [naddrData.identifier, naddrData.pubkey],
+        relayHints: naddrData.relays || []
+      });
     }
   }
 </script>
@@ -40,25 +67,33 @@
     onclick={handleWikilinkClick}>{@render children?.()}</button
   >
 {:else}
-  <!-- svelte-ignore a11y_missing_attribute -->
-  <a target="_blank" {...attrs}>
-    {@render children?.()}
-    <svg
-      class="align-text-top h-3.5 inline pl-1"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      ><g stroke-linecap="round" stroke-linejoin="round"></g><g>
-        <g>
-          <path
-            d="M10.0002 5H8.2002C7.08009 5 6.51962 5 6.0918 5.21799C5.71547 5.40973 5.40973 5.71547 5.21799 6.0918C5 6.51962 5 7.08009 5 8.2002V15.8002C5 16.9203 5 17.4801 5.21799 17.9079C5.40973 18.2842 5.71547 18.5905 6.0918 18.7822C6.5192 19 7.07899 19 8.19691 19H15.8031C16.921 19 17.48 19 17.9074 18.7822C18.2837 18.5905 18.5905 18.2839 18.7822 17.9076C19 17.4802 19 16.921 19 15.8031V14M20 9V4M20 4H15M20 4L13 11"
-            stroke="#000000"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          ></path>
-        </g>
-      </g></svg
+  {#if isNaddr}
+    <button
+      class="text-indigo-600 underline"
+      title={`nostr link to: "${naddrData.identifier}"`}
+      onclick={handleNaddrClick}>{@render children?.()}</button
     >
-  </a>
+  {:else}
+    <!-- svelte-ignore a11y_missing_attribute -->
+    <a target="_blank" {...attrs}>
+      {@render children?.()}
+      <svg
+        class="align-text-top h-3.5 inline pl-1"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        ><g stroke-linecap="round" stroke-linejoin="round"></g><g>
+          <g>
+            <path
+              d="M10.0002 5H8.2002C7.08009 5 6.51962 5 6.0918 5.21799C5.71547 5.40973 5.40973 5.71547 5.21799 6.0918C5 6.51962 5 7.08009 5 8.2002V15.8002C5 16.9203 5 17.4801 5.21799 17.9079C5.40973 18.2842 5.71547 18.5905 6.0918 18.7822C6.5192 19 7.07899 19 8.19691 19H15.8031C16.921 19 17.48 19 17.9074 18.7822C18.2837 18.5905 18.5905 18.2839 18.7822 17.9076C19 17.4802 19 16.921 19 15.8031V14M20 9V4M20 4H15M20 4L13 11"
+              stroke="#000000"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            ></path>
+          </g>
+        </g></svg
+      >
+    </a>
+  {/if}
 {/if}
