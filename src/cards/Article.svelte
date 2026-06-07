@@ -14,6 +14,7 @@
   import ArticleContent from '$components/ArticleContent.svelte';
   import RelayItem from '$components/RelayItem.svelte';
   import { diffLines } from '$lib/diff';
+  import { publishPrivateTagsToRelays } from '$lib/privateTagsSync';
 
   interface Props {
     card: Card;
@@ -127,6 +128,9 @@
         localStorage.setItem('wikistr:private-tags', JSON.stringify(allPrivateTags));
         privateTags = existing;
         window.dispatchEvent(new Event('wikistr:dashboard-update'));
+        if ($account) {
+          publishPrivateTagsToRelays($account.pubkey);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -144,6 +148,9 @@
       localStorage.setItem('wikistr:private-tags', JSON.stringify(allPrivateTags));
       privateTags = existing;
       window.dispatchEvent(new Event('wikistr:dashboard-update'));
+      if ($account) {
+        publishPrivateTagsToRelays($account.pubkey);
+      }
     } catch (e) {
       console.error(e);
     }

@@ -31,6 +31,14 @@ export const signer = {
     const se: Event = await (window as any).nostr.signEvent(event);
     setAccount(se.pubkey);
     return se;
+  },
+  encrypt: async (pubkey: string, plaintext: string): Promise<string> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (window as any).nostr.nip04.encrypt(pubkey, plaintext);
+  },
+  decrypt: async (pubkey: string, ciphertext: string): Promise<string> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return await (window as any).nostr.nip04.decrypt(pubkey, ciphertext);
   }
 };
 

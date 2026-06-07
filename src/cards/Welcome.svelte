@@ -23,6 +23,7 @@
   import { pool } from '@nostr/gadgets/global';
   import { urlWithoutScheme } from '$lib/utils';
   import New from './New.svelte';
+  import { fetchPrivateTagsFromRelays } from '$lib/privateTagsSync';
 
   interface Props {
     createChild: (card: Card) => void;
@@ -98,9 +99,17 @@
     loadDashboardData();
     window.addEventListener('storage', loadDashboardData);
     window.addEventListener('wikistr:dashboard-update', loadDashboardData);
+    
+    const unsubAccount = account.subscribe((acc) => {
+      if (acc) {
+        fetchPrivateTagsFromRelays(acc.pubkey);
+      }
+    });
+
     return () => {
       window.removeEventListener('storage', loadDashboardData);
       window.removeEventListener('wikistr:dashboard-update', loadDashboardData);
+      unsubAccount();
     };
   });
 
