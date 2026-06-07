@@ -55,16 +55,24 @@
     lines.forEach((line) => {
       const adMatch = line.match(/^(=+)\s+(.+)$/);
       if (adMatch) {
-        list.push({ title: adMatch[2].trim(), level: adMatch[1].length });
+        const level = adMatch[1].length;
+        if (level > 1) {
+          list.push({ title: adMatch[2].trim(), level });
+        }
         return;
       }
       const mdMatch = line.match(/^(#+)\s+(.+)$/);
       if (mdMatch) {
-        list.push({ title: mdMatch[2].trim(), level: mdMatch[1].length });
+        const level = mdMatch[1].length;
+        if (level > 1) {
+          list.push({ title: mdMatch[2].trim(), level });
+        }
       }
     });
     return list;
   });
+
+  let minHeadingLevel = $derived(headings.length > 0 ? Math.min(...headings.map(h => h.level)) : 2);
 
   let contributors = $derived.by<string[]>(() => {
     const list: string[] = [pubkey];
@@ -757,7 +765,7 @@
           </div>
           <ul class="space-y-1.5 text-sm">
             {#each headings as heading}
-              <li style:padding-left={`${(heading.level - 1) * 12}px`}>
+              <li style:padding-left={`${(heading.level - minHeadingLevel) * 12}px`}>
                 <a
                   href="javascript:void(0)"
                   onclick={() => scrollToHeading(heading.title)}
