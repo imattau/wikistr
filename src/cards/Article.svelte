@@ -29,7 +29,7 @@
   let showSuggestionsPanel = $state(false);
   let selectedSuggestion = $state<NostrEvent | null>(null);
   let merging = $state(false);
-  let nOthers = $state<number | undefined>(undefined);
+
   let copied = $state(false);
   let isPinned = $state(false);
 
@@ -291,6 +291,8 @@
   let readRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.read).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
   let writeRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.write).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
 
+  let nOthers = $derived(historyEvents.length > 0 ? historyEvents.length : (articleCard.versions ? articleCard.versions.length : undefined));
+
   let title = $derived(event?.tags?.find?.(([k]) => k === 'title')?.[1] || dTag);
   let summary = $derived(event?.tags?.find(([k]) => k === 'summary')?.[1]);
   let tagsList = $derived(event?.tags?.filter(([k]) => k === 't').map(([_, v]) => v) || []);
@@ -469,10 +471,10 @@
     }
   });
 
-  // Lazy-load history revisions (History tab)
+  // Load history revisions in background (after main article load) to update versions count dynamically
   let historyLoaded = false;
   $effect(() => {
-    if (activeTab === 'history' && readRelays.length > 0 && event && !historyLoaded) {
+    if (readRelays.length > 0 && event && !historyLoaded) {
       historyLoaded = true;
       const sub = pool.subscribeMany(
         readRelays,
@@ -518,13 +520,7 @@
     return () => clearTimeout(to);
   });
 
-  onMount(() => {
-    // preemptively load other versions if necessary
-    if (articleCard.versions) {
-      nOthers = articleCard.versions.length;
-      return;
-    }
-  });
+
 
   let cancelers: Array<() => void> = [];
   onDestroy(() => {
