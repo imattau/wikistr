@@ -4,7 +4,7 @@
 
   import WikilinkComponent from '$components/WikilinkComponent.svelte';
   import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
-  import { wikiKind, account, signer } from '$lib/nostr';
+  import { wikiKind, gitPatchKind, account, signer } from '$lib/nostr';
   import type { ArticleCard, Card, EditorCard, EditorData } from '$lib/types.ts';
   import {
     getTagOr,
@@ -31,6 +31,12 @@
   let targets: { url: string; status: 'pending' | 'success' | 'failure'; message?: string }[] =
     $state([]);
   let previewing = $state(false);
+
+  let isSomeoneElsesArticle = $derived(
+    data.previous &&
+    data.previous.type === 'article' &&
+    data.previous.data[1] !== $account?.pubkey
+  );
 
   async function publish() {
     targets = unique(
@@ -87,11 +93,74 @@
       return;
     }
   }
+
+  async function suggest() {
+    if (!isSomeoneElsesArticle || !data.previous) return;
+    const originalPubkey = data.previous.data[1];
+    const originalDTag = data.previous.data[0];
+
+    targets = unique(
+      (await loadRelayList($account!.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url),
+      DEFAULT_WIKI_RELAYS
+    ).map((url) => ({ url, status: 'pending' }));
+    error = undefined;
+
+    data.title = data.title.trim();
+
+    let eventTemplate: EventTemplate = {
+      kind: gitPatchKind,
+      tags: [
+        ['a', `${wikiKind}:${originalPubkey}:${originalDTag}`, (data.previous as any).relayHints?.[0] || ''],
+        ['p', originalPubkey]
+      ],
+      content: data.content.trim(),
+      created_at: Math.round(Date.now() / 1000)
+    };
+    if (data.title) eventTemplate.tags.push(['title', data.title]);
+    if (data.summary) eventTemplate.tags.push(['summary', data.summary]);
+
+    try {
+      let event = await signer.signEvent(eventTemplate);
+      let successes: string[] = [];
+
+      await Promise.all(
+        targets.map(async (target, i) => {
+          try {
+            const r = await pool.ensureRelay(target.url);
+            await r.publish(event);
+            target.status = 'success';
+            successes.push(target.url);
+          } catch (err) {
+            target.status = 'failure';
+            target.message = String(err);
+          }
+          targets[i] = target;
+          targets = targets;
+        })
+      );
+
+      if (successes.length) {
+        setTimeout(() => {
+          if (data.previous) {
+            replaceSelf(data.previous);
+          }
+        }, 1400);
+      }
+    } catch (err) {
+      error = String(err);
+      targets = [];
+      return;
+    }
+  }
 </script>
 
 <div class="my-4 font-bold text-4xl">
   {#if editorCard.data.content}
-    Editing an article
+    {#if isSomeoneElsesArticle}
+      Suggesting changes to article
+    {:else}
+      Editing an article
+    {/if}
   {:else}
     Creating an article
   {/if}
@@ -103,7 +172,8 @@
       <input
         placeholder="example: Greek alphabet"
         bind:value={data.title}
-        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md ml-2"
+        disabled={isSomeoneElsesArticle}
+        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md ml-2 disabled:bg-gray-100 disabled:text-gray-500"
       /></label
     >
   </div>
@@ -168,12 +238,27 @@
       {error}
     </div>
   {/if}
-  <div class="mt-2 flex justify-between">
-    <button
-      onclick={publish}
-      class="cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-      >Save</button
-    >
+  <div class="mt-2 flex justify-between items-center">
+    <div class="flex space-x-2">
+      {#if isSomeoneElsesArticle}
+        <button
+          onclick={suggest}
+          class="cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+          >Submit Change</button
+        >
+        <button
+          onclick={publish}
+          class="cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >Publish Fork</button
+        >
+      {:else}
+        <button
+          onclick={publish}
+          class="cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >Save</button
+        >
+      {/if}
+    </div>
     <button
       onclick={() => {
         previewing = !previewing;

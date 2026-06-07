@@ -117,7 +117,7 @@
   overflow-y-auto
   overflow-x-hidden
   mx-2 mt-2
-  min-w-[395px] max-w-[395px] lg:min-w-[32rem] lg:max-w-[32rem]
+  w-[calc(100vw_-_24px)] min-w-[calc(100vw_-_24px)] max-w-[calc(100vw_-_24px)] sm:min-w-[395px] sm:max-w-[395px] lg:min-w-[32rem] lg:max-w-[32rem]
   rounded-lg border-8 bg-white
   h-[calc(100vh_-_32px)]
   p-4

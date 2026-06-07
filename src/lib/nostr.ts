@@ -17,6 +17,7 @@ const startTime = Math.round(Date.now() / 1000);
 
 export const reactionKind = 7;
 export const wikiKind = 30818;
+export const gitPatchKind = 1617;
 
 export const signer = {
   getPublicKey: async () => {
