@@ -11,10 +11,11 @@
 
   let { attrs, children }: Props = $props();
 
-  const { href } = attrs;
+  // Make href reactive via derived
+  let href = $derived(attrs.href || '');
 
-  // svelte-ignore non_reactive_update
-  let wikitarget = href.substring(9); // Remove 'wikilink:' prefix
+  // Derived wikitarget
+  let wikitarget = $derived(href.startsWith('wikilink:') ? href.substring(9) : href);
 
   const extra: undefined | { preferredAuthors: string[]; createChild: (card: Card) => void } =
     getExtra();
@@ -23,24 +24,22 @@
     createChild: undefined
   };
 
-  if (href.startsWith('wikilink:')) {
-    wikitarget = href.substring(9);
-  }
-
-  let isNaddr = false;
-  let naddrData: any = null;
-
-  if (href && href.startsWith('nostr:naddr1')) {
-    try {
-      const decoded = decode(href.replace('nostr:', ''));
-      if (decoded.type === 'naddr') {
-        isNaddr = true;
-        naddrData = decoded.data;
+  // Derived naddr data
+  let decodedNaddr = $derived.by(() => {
+    if (href && href.startsWith('nostr:naddr1')) {
+      try {
+        const decoded = decode(href.replace('nostr:', ''));
+        if (decoded.type === 'naddr') {
+          return decoded.data;
+        }
+      } catch (e) {
+        console.error('Failed to decode naddr:', e);
       }
-    } catch (e) {
-      console.error('Failed to decode naddr:', e);
     }
-  }
+    return null;
+  });
+
+  let isNaddr = $derived(decodedNaddr !== null);
 
   function handleWikilinkClick() {
     if (createChild) {
@@ -49,12 +48,12 @@
   }
 
   function handleNaddrClick() {
-    if (createChild && naddrData) {
+    if (createChild && decodedNaddr) {
       createChild({
         id: next(),
         type: 'article',
-        data: [naddrData.identifier, naddrData.pubkey],
-        relayHints: naddrData.relays || []
+        data: [decodedNaddr.identifier, decodedNaddr.pubkey],
+        relayHints: decodedNaddr.relays || []
       });
     }
   }
@@ -67,10 +66,10 @@
     onclick={handleWikilinkClick}>{@render children?.()}</button
   >
 {:else}
-  {#if isNaddr}
+  {#if isNaddr && decodedNaddr}
     <button
       class="text-indigo-600 underline"
-      title={`nostr link to: "${naddrData.identifier}"`}
+      title={`nostr link to: "${decodedNaddr.identifier}"`}
       onclick={handleNaddrClick}>{@render children?.()}</button
     >
   {:else}
