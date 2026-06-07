@@ -30,6 +30,67 @@
   let merging = $state(false);
   let nOthers = $state<number | undefined>(undefined);
   let copied = $state(false);
+  let isPinned = $state(false);
+
+  $effect(() => {
+    if (event) {
+      try {
+        const stored = localStorage.getItem('wikistr:pinned');
+        const pinned = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(pinned)) {
+          isPinned = pinned.some((x: any) => x.dTag === dTag && x.pubkey === pubkey);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  });
+
+  $effect(() => {
+    if (event) {
+      try {
+        const stored = localStorage.getItem('wikistr:history');
+        let history = stored ? JSON.parse(stored) : [];
+        if (!Array.isArray(history)) history = [];
+        
+        const historyItem = {
+          dTag,
+          pubkey,
+          title: title || dTag,
+          timestamp: Date.now()
+        };
+        
+        history = history.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
+        history.unshift(historyItem);
+        history = history.slice(0, 5);
+        
+        localStorage.setItem('wikistr:history', JSON.stringify(history));
+      } catch (e) {
+        console.error('Failed to update history', e);
+      }
+    }
+  });
+
+  function togglePin() {
+    isPinned = !isPinned;
+    try {
+      const stored = localStorage.getItem('wikistr:pinned');
+      let pinned = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(pinned)) pinned = [];
+      
+      if (isPinned) {
+        if (!pinned.some((x: any) => x.dTag === dTag && x.pubkey === pubkey)) {
+          pinned.push({ dTag, pubkey, title: title || dTag });
+        }
+      } else {
+        pinned = pinned.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
+      }
+      localStorage.setItem('wikistr:pinned', JSON.stringify(pinned));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   let likeStatus: 'liked' | 'disliked' | unknown;
   let canLike = $state<boolean | undefined>();
   let seenOn = $state<string[]>([]);
@@ -537,6 +598,14 @@
           &nbsp;• &nbsp;
           <a class="cursor-pointer underline" onclick={shareCopy}>
             {#if copied}Copied!{:else}Share{/if}
+          </a>
+          &nbsp;• &nbsp;
+          <!-- svelte-ignore a11y_invalid_attribute -->
+          <a class="cursor-pointer underline inline-flex items-center space-x-0.5" onclick={togglePin}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill={isPinned ? '#eab308' : 'none'} viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-amber-500 inline align-middle">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+            </svg>
+            <span class="align-middle">{isPinned ? 'Unpin' : 'Pin'}</span>
           </a>
           &nbsp;• &nbsp;
           <a class="cursor-pointer underline" onmouseup={seeOthers}>{nOthers || ''} Versions</a>
