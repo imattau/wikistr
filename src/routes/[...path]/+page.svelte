@@ -27,7 +27,7 @@
 
   $effect(() => {
     let prevP: string[] = [];
-    let nextP = page.params.path.split('/').filter((str) => str !== '');
+    let nextP = (page.params.path || '').split('/').filter((str) => str !== '');
 
     let nextCards: Card[] = [];
     for (let n = 0; n < nextP.length; n++) {

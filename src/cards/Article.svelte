@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import type { EventTemplate, NostrEvent } from '@nostr/tools/pure';
   import { pool } from '@nostr/gadgets/global';
   import { loadRelayList } from '@nostr/gadgets/lists';
@@ -35,41 +35,45 @@
 
   $effect(() => {
     if (event) {
-      try {
-        const stored = localStorage.getItem('wikistr:pinned');
-        const pinned = stored ? JSON.parse(stored) : [];
-        if (Array.isArray(pinned)) {
-          isPinned = pinned.some((x: any) => x.dTag === dTag && x.pubkey === pubkey);
+      untrack(() => {
+        try {
+          const stored = localStorage.getItem('wikistr:pinned');
+          const pinned = stored ? JSON.parse(stored) : [];
+          if (Array.isArray(pinned)) {
+            isPinned = pinned.some((x: any) => x.dTag === dTag && x.pubkey === pubkey);
+          }
+        } catch (e) {
+          console.error(e);
         }
-      } catch (e) {
-        console.error(e);
-      }
+      });
     }
   });
 
   $effect(() => {
     if (event) {
-      try {
-        const stored = localStorage.getItem('wikistr:history');
-        let history = stored ? JSON.parse(stored) : [];
-        if (!Array.isArray(history)) history = [];
-        
-        const historyItem = {
-          dTag,
-          pubkey,
-          title: title || dTag,
-          timestamp: Date.now()
-        };
-        
-        history = history.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
-        history.unshift(historyItem);
-        history = history.slice(0, 5);
-        
-        localStorage.setItem('wikistr:history', JSON.stringify(history));
-        window.dispatchEvent(new Event('wikistr:dashboard-update'));
-      } catch (e) {
-        console.error('Failed to update history', e);
-      }
+      untrack(() => {
+        try {
+          const stored = localStorage.getItem('wikistr:history');
+          let history = stored ? JSON.parse(stored) : [];
+          if (!Array.isArray(history)) history = [];
+          
+          const historyItem = {
+            dTag,
+            pubkey,
+            title: title || dTag,
+            timestamp: Date.now()
+          };
+          
+          history = history.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
+          history.unshift(historyItem);
+          history = history.slice(0, 5);
+          
+          localStorage.setItem('wikistr:history', JSON.stringify(history));
+          window.dispatchEvent(new Event('wikistr:dashboard-update'));
+        } catch (e) {
+          console.error('Failed to update history', e);
+        }
+      });
     }
   });
 
@@ -320,6 +324,8 @@
   function seeOthers(ev: MouseEvent) {
     if (
       articleCard.back &&
+      'data' in articleCard.back &&
+      typeof articleCard.back.data === 'string' &&
       event &&
       normalizeIdentifier(articleCard.back.data) === getTagOr(event, 'd')
     ) {

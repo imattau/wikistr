@@ -205,7 +205,7 @@
       }
     }
 
-    function receivedEvent(relay: AbstractRelay, id: string) {
+    function receivedEvent(relay: any, id: string) {
       if (!(id in seenCache)) seenCache[id] = [];
       if (seenCache[id].indexOf(relay.url) === -1) seenCache[id].push(relay.url);
     }
