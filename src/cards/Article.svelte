@@ -52,20 +52,33 @@
     if (!event?.content) return [];
     const lines = event.content.split(/\r?\n/);
     const list: Heading[] = [];
+    
+    const hasAsciiDocHeadings = lines.some(line => line.match(/^={2,6}\s+.+$/));
+    let inCodeBlock = false;
+
     lines.forEach((line) => {
-      const adMatch = line.match(/^(=+)\s+(.+)$/);
-      if (adMatch) {
-        const level = adMatch[1].length;
-        if (level > 1) {
-          list.push({ title: adMatch[2].trim(), level });
-        }
+      const trimmed = line.trim();
+      if (trimmed.startsWith('----') || trimmed.startsWith('....') || trimmed.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
         return;
       }
-      const mdMatch = line.match(/^(#+)\s+(.+)$/);
-      if (mdMatch) {
-        const level = mdMatch[1].length;
-        if (level > 1) {
-          list.push({ title: mdMatch[2].trim(), level });
+      if (inCodeBlock) return;
+
+      if (hasAsciiDocHeadings) {
+        const adMatch = line.match(/^(=+)\s+(.+)$/);
+        if (adMatch) {
+          const level = adMatch[1].length;
+          if (level > 1) {
+            list.push({ title: adMatch[2].trim(), level });
+          }
+        }
+      } else {
+        const mdMatch = line.match(/^(#+)\s+(.+)$/);
+        if (mdMatch) {
+          const level = mdMatch[1].length;
+          if (level > 1) {
+            list.push({ title: mdMatch[2].trim(), level });
+          }
         }
       }
     });
