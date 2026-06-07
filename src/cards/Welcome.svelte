@@ -61,8 +61,10 @@
   onMount(() => {
     loadDashboardData();
     window.addEventListener('storage', loadDashboardData);
+    window.addEventListener('wikistr:dashboard-update', loadDashboardData);
     return () => {
       window.removeEventListener('storage', loadDashboardData);
+      window.removeEventListener('wikistr:dashboard-update', loadDashboardData);
     };
   });
 

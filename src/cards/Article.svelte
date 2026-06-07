@@ -65,6 +65,7 @@
         history = history.slice(0, 5);
         
         localStorage.setItem('wikistr:history', JSON.stringify(history));
+        window.dispatchEvent(new Event('wikistr:dashboard-update'));
       } catch (e) {
         console.error('Failed to update history', e);
       }
@@ -86,6 +87,7 @@
         pinned = pinned.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
       }
       localStorage.setItem('wikistr:pinned', JSON.stringify(pinned));
+      window.dispatchEvent(new Event('wikistr:dashboard-update'));
     } catch (e) {
       console.error(e);
     }
