@@ -34,6 +34,40 @@
   let pinnedList = $state<{ dTag: string; pubkey: string; title: string }[]>([]);
   let historyList = $state<{ dTag: string; pubkey: string; title: string; timestamp: number }[]>([]);
   let showRelays = $state(false);
+  let privateTagsMap = $state<{ [tag: string]: { dTag: string; pubkey: string; title: string }[] }>({});
+  let activePrivateTag = $state<string | null>(null);
+
+  function loadPrivateTagsMap() {
+    try {
+      const stored = localStorage.getItem('wikistr:private-tags');
+      const allPrivateTags = stored ? JSON.parse(stored) : {};
+      
+      const storedPinned = localStorage.getItem('wikistr:pinned');
+      const pinned = storedPinned ? JSON.parse(storedPinned) : [];
+      const storedHistory = localStorage.getItem('wikistr:history');
+      const history = storedHistory ? JSON.parse(storedHistory) : [];
+      const allItems = [...pinned, ...history];
+      
+      const map: typeof privateTagsMap = {};
+      
+      Object.entries(allPrivateTags).forEach(([key, tags]) => {
+        const [pubkey, dTag] = key.split(':');
+        const match = allItems.find((x) => x.dTag === dTag && x.pubkey === pubkey);
+        const title = match ? match.title : dTag;
+        
+        if (Array.isArray(tags)) {
+          tags.forEach((tag) => {
+            if (!map[tag]) map[tag] = [];
+            map[tag].push({ dTag, pubkey, title });
+          });
+        }
+      });
+      
+      privateTagsMap = map;
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   function loadDashboardData() {
     try {
@@ -44,6 +78,8 @@
       const storedHistory = localStorage.getItem('wikistr:history');
       historyList = storedHistory ? JSON.parse(storedHistory) : [];
       if (!Array.isArray(historyList)) historyList = [];
+
+      loadPrivateTagsMap();
     } catch (e) {
       console.error(e);
     }
@@ -268,6 +304,43 @@
         </button>
       {/each}
     </div>
+  </div>
+{/if}
+
+{#if Object.keys(privateTagsMap).length > 0}
+  <div class="my-6 p-4 border border-stone-200 rounded-lg bg-stone-50/50">
+    <h2 class="font-bold text-lg text-stone-700 mb-3 flex items-center space-x-2">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-amber-500">
+        <path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd" />
+      </svg>
+      <span>Your Private Tags</span>
+    </h2>
+    <div class="flex flex-wrap gap-1.5 mb-3">
+      {#each Object.keys(privateTagsMap) as tag}
+        <button 
+          onclick={() => activePrivateTag = activePrivateTag === tag ? null : tag}
+          class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border transition-all {activePrivateTag === tag ? 'bg-amber-100 text-amber-800 border-amber-300 shadow-sm' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'}"
+        >
+          #{tag} ({privateTagsMap[tag].length})
+        </button>
+      {/each}
+    </div>
+    
+    {#if activePrivateTag && privateTagsMap[activePrivateTag]}
+      <div class="space-y-2 border-t border-stone-200/60 pt-3">
+        {#each privateTagsMap[activePrivateTag] as item}
+          <button 
+            onclick={() => openArticleByCoordinate(item.dTag, item.pubkey)}
+            class="w-full text-left p-2 rounded bg-white border border-stone-100 hover:border-indigo-300 hover:shadow-sm transition-all text-xs font-medium text-stone-700 flex items-center justify-between"
+          >
+            <span class="truncate">{item.title}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5 text-stone-400">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 

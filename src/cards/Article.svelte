@@ -98,6 +98,57 @@
   let seenOn = $state<string[]>([]);
   let view = $state<'formatted' | 'asciidoc' | 'raw'>('formatted');
 
+  let privateTags = $state<string[]>([]);
+  let newPrivateTag = $state('');
+  let showAddPrivateTag = $state(false);
+
+  function loadPrivateTags() {
+    try {
+      const stored = localStorage.getItem('wikistr:private-tags');
+      const allPrivateTags = stored ? JSON.parse(stored) : {};
+      const key = `${pubkey}:${dTag}`;
+      privateTags = allPrivateTags[key] || [];
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function addPrivateTag(tag: string) {
+    const cleanTag = tag.trim().toLowerCase();
+    if (!cleanTag) return;
+    try {
+      const stored = localStorage.getItem('wikistr:private-tags');
+      const allPrivateTags = stored ? JSON.parse(stored) : {};
+      const key = `${pubkey}:${dTag}`;
+      const existing = allPrivateTags[key] || [];
+      if (!existing.includes(cleanTag)) {
+        existing.push(cleanTag);
+        allPrivateTags[key] = existing;
+        localStorage.setItem('wikistr:private-tags', JSON.stringify(allPrivateTags));
+        privateTags = existing;
+        window.dispatchEvent(new Event('wikistr:dashboard-update'));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function removePrivateTag(tag: string) {
+    try {
+      const stored = localStorage.getItem('wikistr:private-tags');
+      const allPrivateTags = stored ? JSON.parse(stored) : {};
+      const key = `${pubkey}:${dTag}`;
+      let existing = allPrivateTags[key] || [];
+      existing = existing.filter((t: string) => t !== tag);
+      allPrivateTags[key] = existing;
+      localStorage.setItem('wikistr:private-tags', JSON.stringify(allPrivateTags));
+      privateTags = existing;
+      window.dispatchEvent(new Event('wikistr:dashboard-update'));
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   // Wiki features state
   let activeTab = $state<'article' | 'discussion' | 'history'>('article');
   let comments = $state<NostrEvent[]>([]);
@@ -281,6 +332,7 @@
   }
 
   onMount(() => {
+    loadPrivateTags();
     // load this article
     if (articleCard.actualEvent) {
       event = articleCard.actualEvent;
@@ -591,8 +643,8 @@
             {formatDate(event.created_at)}
           {/if}
         </div>
-        {#if tagsList.length > 0}
-          <div class="flex flex-wrap gap-1.5 mt-2">
+        <div class="flex flex-wrap items-center gap-1.5 mt-2">
+          {#if tagsList.length > 0}
             {#each tagsList as tag}
               <button 
                 onclick={() => createChild({ id: next(), type: 'find', data: '#' + tag, preferredAuthors: [] })}
@@ -601,8 +653,59 @@
                 #{tag}
               </button>
             {/each}
-          </div>
-        {/if}
+          {/if}
+
+          <!-- Private Tags -->
+          {#each privateTags as ptag}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3 h-3 mr-0.5 text-amber-500">
+                <path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd" />
+              </svg>
+              <span>{ptag}</span>
+              <button 
+                onclick={() => removePrivateTag(ptag)} 
+                class="ml-1 text-amber-400 hover:text-amber-600 focus:outline-none font-bold"
+                title="Remove private tag"
+              >
+                &times;
+              </button>
+            </span>
+          {/each}
+
+          <!-- Add Private Tag Toggle/Input -->
+          {#if showAddPrivateTag}
+            <form 
+              onsubmit={(e) => {
+                e.preventDefault();
+                addPrivateTag(newPrivateTag);
+                newPrivateTag = '';
+                showAddPrivateTag = false;
+              }}
+              class="inline-flex items-center"
+            >
+              <input 
+                type="text" 
+                bind:value={newPrivateTag} 
+                placeholder="private tag"
+                class="px-2 py-0.5 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-amber-500 focus:outline-none w-24"
+                autoFocus
+                onblur={() => {
+                  setTimeout(() => {
+                    if (!newPrivateTag) showAddPrivateTag = false;
+                  }, 200);
+                }}
+              />
+            </form>
+          {:else}
+            <button 
+              onclick={() => showAddPrivateTag = true}
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border border-dashed border-stone-300 text-stone-500 hover:border-amber-400 hover:text-amber-600 transition-colors"
+              title="Add a private bookmark/tag for your eyes only"
+            >
+              + Private Tag
+            </button>
+          {/if}
+        </div>
         <div>
           <a class="cursor-pointer underline" onclick={edit}>
             {#if event?.pubkey === $account?.pubkey}
