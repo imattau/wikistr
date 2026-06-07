@@ -74,6 +74,9 @@
     results = [];
     redirected = false;
 
+    const isTagQuery = query.startsWith('#');
+    const tagTerm = isTagQuery ? query.substring(1).toLowerCase().trim() : '';
+
     setTimeout(() => {
       tried = true;
     }, 1500);
@@ -83,11 +86,13 @@
       let normalizedIdentifier = normalizeIdentifier(query);
       results = results.sort((a, b) => {
         if (
+          !isTagQuery &&
           getTagOr(a, 'd') === normalizedIdentifier &&
           getTagOr(b, 'd') !== normalizedIdentifier
         ) {
           return -1;
         } else if (
+          !isTagQuery &&
           getTagOr(b, 'd') === normalizedIdentifier &&
           getTagOr(a, 'd') !== normalizedIdentifier
         ) {
@@ -129,15 +134,19 @@
 
       if (relaysToUseNow.length === 0) return;
 
+      const exactFilter = isTagQuery
+        ? { kinds: [wikiKind], '#t': [tagTerm], limit: 25 }
+        : { kinds: [wikiKind], '#d': [normalizeIdentifier(query)], limit: 25 };
+
       let subc = pool.subscribeMany(
         relaysToUseNow,
-        [{ kinds: [wikiKind], '#d': [normalizeIdentifier(query)], limit: 25 }],
+        [exactFilter],
         {
           id: 'find-exactmatch',
           onevent(evt) {
             tried = true;
 
-            if (searchCard.preferredAuthors.includes(evt.pubkey)) {
+            if (!isTagQuery && searchCard.preferredAuthors.includes(evt.pubkey)) {
               // we found an exact match that fits the list of preferred authors
               // jump straight into it
               redirected = true;
@@ -149,7 +158,7 @@
               update();
 
               // If we have not redirected yet, check if this is an exact match and schedule a fallback redirect
-              if (!redirected && getTagOr(evt, 'd') === normalizeIdentifier(query)) {
+              if (!isTagQuery && !redirected && getTagOr(evt, 'd') === normalizeIdentifier(query)) {
                 if (!redirectTimeout) {
                   redirectTimeout = setTimeout(() => {
                     if (redirected) return;

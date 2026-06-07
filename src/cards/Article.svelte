@@ -227,6 +227,7 @@
 
   let title = $derived(event?.tags?.find?.(([k]) => k === 'title')?.[1] || dTag);
   let summary = $derived(event?.tags?.find(([k]) => k === 'summary')?.[1]);
+  let tagsList = $derived(event?.tags?.filter(([k]) => k === 't').map(([_, v]) => v) || []);
   let rawEvent = $derived(event ? JSON.stringify(event, null, 2) : '{...}');
 
   function edit() {
@@ -237,9 +238,10 @@
         title,
         summary: summary || '',
         content: event?.content || '',
+        tags: tagsList,
         previous: card as ArticleCard
       }
-    });
+    } as any);
   }
 
   function shareCopy() {
@@ -589,6 +591,18 @@
             {formatDate(event.created_at)}
           {/if}
         </div>
+        {#if tagsList.length > 0}
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            {#each tagsList as tag}
+              <button 
+                onclick={() => createChild({ id: next(), type: 'find', data: '#' + tag, preferredAuthors: [] })}
+                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 hover:text-stone-800 transition-colors"
+              >
+                #{tag}
+              </button>
+            {/each}
+          </div>
+        {/if}
         <div>
           <a class="cursor-pointer underline" onclick={edit}>
             {#if event?.pubkey === $account?.pubkey}

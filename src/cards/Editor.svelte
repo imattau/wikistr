@@ -28,6 +28,15 @@
   const editorCard = card as EditorCard;
 
   let data = $state<EditorData>({ ...editorCard.data });
+  let tagsInput = $state(data.tags ? data.tags.join(', ') : '');
+
+  function getParsedTags(): string[] {
+    return tagsInput
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter((t) => t.length > 0);
+  }
+
   let error = $state<string | undefined>();
   let targets: { url: string; status: 'pending' | 'success' | 'failure'; message?: string }[] =
     $state([]);
@@ -140,6 +149,10 @@
     };
     if (data.title !== eventTemplate.tags[0][1]) eventTemplate.tags.push(['title', data.title]);
     if (data.summary) eventTemplate.tags.push(['summary', data.summary]);
+    const parsedTags = getParsedTags();
+    parsedTags.forEach((tag) => {
+      eventTemplate.tags.push(['t', tag]);
+    });
 
     try {
       let event = await signer.signEvent(eventTemplate);
@@ -350,6 +363,17 @@
         ></textarea></label
       >
     </details>
+  </div>
+  <div class="mt-4">
+    <label class="block text-sm font-semibold text-gray-700 mb-1">
+      Categories / Tags
+    </label>
+    <input
+      type="text"
+      bind:value={tagsInput}
+      placeholder="e.g. science, history, philosophy (comma-separated)"
+      class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+    />
   </div>
 {/if}
 

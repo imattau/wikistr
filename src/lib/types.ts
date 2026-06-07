@@ -4,6 +4,7 @@ export type EditorData = {
   title: string;
   summary: string;
   content: string;
+  tags?: string[];
   previous: Card | undefined;
 };
 
