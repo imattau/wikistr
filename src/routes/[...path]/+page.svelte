@@ -83,7 +83,7 @@
     } else if (pathPart.match(/^[\w-]+\*[a-f0-9]{64}$/)) {
       return { id: next(), type: 'article', data: pathPart.split('*') } as ArticleCard;
     } else {
-      return { id: next(), type: 'find', data: pathPart, preferredAuthors: [] } as SearchCard;
+      return { id: next(), type: 'find', data: ditem, preferredAuthors: [] } as SearchCard;
     }
   }
 </script>
