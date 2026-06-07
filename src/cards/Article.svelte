@@ -66,6 +66,23 @@
     return list;
   });
 
+  let contributors = $derived.by<string[]>(() => {
+    const list: string[] = [pubkey];
+    if (event?.tags) {
+      event.tags.forEach(([tag, val]) => {
+        if (tag === 'contributor' && val && !list.includes(val)) {
+          list.push(val);
+        }
+      });
+    }
+    historyEvents.forEach((rev) => {
+      if (rev.pubkey && !list.includes(rev.pubkey)) {
+        list.push(rev.pubkey);
+      }
+    });
+    return list;
+  });
+
   function scrollToHeading(headingTitle: string) {
     const cardEl = document.getElementById(`wikicard-${card.id}`);
     if (!cardEl) return;
@@ -798,6 +815,18 @@
             </ul>
           {/if}
         </details>
+      </div>
+
+      <!-- Contributors -->
+      <div class="mt-6 border-t border-stone-250 pt-4 text-xs text-stone-500">
+        <span class="font-semibold text-stone-700">Contributors:</span>
+        <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+          {#each contributors as cPubkey}
+            <div class="inline-flex items-center">
+              <UserLabel pubkey={cPubkey} {createChild} />
+            </div>
+          {/each}
+        </div>
       </div>
 
     {:else if activeTab === 'discussion'}
