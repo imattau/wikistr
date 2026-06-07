@@ -16,6 +16,18 @@
   let scrollLeft: number;
   let slider: HTMLElement;
 
+  let isWelcomeCollapsed = $state(false);
+  let prevCardsLength = 0;
+
+  $effect(() => {
+    if ($cards.length < 2) {
+      isWelcomeCollapsed = false;
+    } else if ($cards.length >= 2 && prevCardsLength < 2) {
+      isWelcomeCollapsed = true; // Auto-collapse when second column is opened
+    }
+    prevCardsLength = $cards.length;
+  });
+
   onMount(() => {
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mouseup', onMouseUp);
@@ -69,7 +81,11 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="flex overflow-x-scroll pb-2" draggable="false" bind:this={slider}>
-  <CardElement card={{ type: 'welcome', id: -1 }} />
+  <CardElement 
+    card={{ type: 'welcome', id: -1 }} 
+    collapsed={$cards.length >= 2 && isWelcomeCollapsed}
+    onToggleCollapse={() => isWelcomeCollapsed = !isWelcomeCollapsed}
+  />
 
   {#each $cards as card (card.id)}
     <CardElement {card} />
