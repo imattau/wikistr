@@ -148,9 +148,26 @@
 
     data.title = data.title.trim();
 
+    let version = 1;
+    if (data.previous && 'actualEvent' in data.previous && data.previous.actualEvent) {
+      const prevEvent = data.previous.actualEvent;
+      const prevVersionTag = prevEvent.tags.find(([k]) => k === 'version' || k === 'revision');
+      if (prevVersionTag) {
+        const parsed = parseInt(prevVersionTag[1], 10);
+        if (!isNaN(parsed)) {
+          version = parsed + 1;
+        }
+      } else {
+        version = 2;
+      }
+    }
+
     let eventTemplate: EventTemplate = {
       kind: wikiKind,
-      tags: [['d', normalizeIdentifier(data.title)]],
+      tags: [
+        ['d', normalizeIdentifier(data.title)],
+        ['version', String(version)]
+      ],
       content: data.content.trim(),
       created_at: Math.round(Date.now() / 1000)
     };

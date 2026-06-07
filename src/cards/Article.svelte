@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from 'svelte';
+  import * as idbkv from 'idb-keyval';
   import type { EventTemplate, NostrEvent } from '@nostr/tools/pure';
   import { pool } from '@nostr/gadgets/global';
   import { loadRelayList } from '@nostr/gadgets/lists';
@@ -298,7 +299,21 @@
   let tagsList = $derived(event?.tags?.filter(([k]) => k === 't').map(([_, v]) => v) || []);
   let rawEvent = $derived(event ? JSON.stringify(event, null, 2) : '{...}');
 
+  let currentVersion = $derived.by<number>(() => {
+    if (!event) return 1;
+    const versionTag = event.tags.find(([k]) => k === 'version' || k === 'revision');
+    if (versionTag) {
+      const parsed = parseInt(versionTag[1], 10);
+      if (!isNaN(parsed)) return parsed;
+    }
+    return historyEvents.filter(h => h.pubkey === event?.pubkey).length || 1;
+  });
+
   function edit() {
+    const prevCard = { ...(card as ArticleCard) };
+    if (event) {
+      prevCard.actualEvent = event;
+    }
     replaceSelf({
       id: next(),
       type: 'editor',
@@ -307,7 +322,7 @@
         summary: summary || '',
         content: event?.content || '',
         tags: tagsList,
-        previous: card as ArticleCard
+        previous: prevCard
       }
     } as any);
   }
@@ -358,9 +373,31 @@
       loadedRelays = res;
     });
 
+    // Load local history from IndexedDB cache
+    const historyKey = `wikistr:history:${pubkey}:${dTag}`;
+    idbkv.get(historyKey).then((localHistory) => {
+      if (localHistory && Array.isArray(localHistory)) {
+        localHistory.forEach((evt) => {
+          if (!historyEvents.some((h) => h.id === evt.id)) {
+            historyEvents = [...historyEvents, evt].sort((a, b) => b.created_at - a.created_at);
+          }
+        });
+      }
+    });
+
     if (articleCard.actualEvent) {
       event = articleCard.actualEvent;
       seenOn = articleCard.relayHints || [];
+
+      // Save actualEvent to local history cache
+      idbkv.get(historyKey).then((localHistory) => {
+        const history = Array.isArray(localHistory) ? localHistory : [];
+        if (!history.some((h) => h.id === event!.id)) {
+          const updated = [...history, event!].sort((a, b) => b.created_at - a.created_at);
+          idbkv.set(historyKey, updated);
+          historyEvents = updated;
+        }
+      });
     }
 
     loadNostrUser(pubkey).then((user) => {
@@ -391,6 +428,17 @@
             if (!event || event.created_at < evt.created_at) {
               event = evt;
               setupLikes();
+
+              // Save event to local history cache
+              const historyKey = `wikistr:history:${pubkey}:${dTag}`;
+              idbkv.get(historyKey).then((localHistory) => {
+                const history = Array.isArray(localHistory) ? localHistory : [];
+                if (!history.some((h) => h.id === evt.id)) {
+                  const updated = [...history, evt].sort((a, b) => b.created_at - a.created_at);
+                  idbkv.set(historyKey, updated);
+                  historyEvents = updated;
+                }
+              });
             }
           }
         }
@@ -956,7 +1004,7 @@
         </div>
         <div>
           <span class="font-semibold text-stone-700">Revisions:</span>
-          {historyEvents.filter(h => h.pubkey === event?.pubkey).length || 1}
+          {currentVersion}
         </div>
         <div>
           <span class="font-semibold text-stone-700">Contributors:</span>
