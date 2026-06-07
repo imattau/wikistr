@@ -8,7 +8,7 @@
   import { normalizeIdentifier } from '@nostr/tools/nip54';
 
   import { account, reactionKind, wikiKind, gitPatchKind, signer } from '$lib/nostr';
-  import { formatDate, getA, getTagOr, next } from '$lib/utils';
+  import { formatDate, getA, getTagOr, next, unique } from '$lib/utils';
   import type { ArticleCard, SearchCard, Card } from '$lib/types';
   import UserLabel from '$components/UserLabel.svelte';
   import ArticleContent from '$components/ArticleContent.svelte';
@@ -34,6 +34,89 @@
   let canLike = $state<boolean | undefined>();
   let seenOn = $state<string[]>([]);
   let view = $state<'formatted' | 'asciidoc' | 'raw'>('formatted');
+
+  // Wiki features state
+  let activeTab = $state<'article' | 'discussion' | 'history'>('article');
+  let comments = $state<NostrEvent[]>([]);
+  let newCommentText = $state('');
+  let publishingComment = $state(false);
+  let historyEvents = $state<NostrEvent[]>([]);
+  let backlinks = $state<NostrEvent[]>([]);
+
+  interface Heading {
+    title: string;
+    level: number;
+  }
+
+  let headings = $derived.by<Heading[]>(() => {
+    if (!event?.content) return [];
+    const lines = event.content.split(/\r?\n/);
+    const list: Heading[] = [];
+    lines.forEach((line) => {
+      const adMatch = line.match(/^(=+)\s+(.+)$/);
+      if (adMatch) {
+        list.push({ title: adMatch[2].trim(), level: adMatch[1].length });
+        return;
+      }
+      const mdMatch = line.match(/^(#+)\s+(.+)$/);
+      if (mdMatch) {
+        list.push({ title: mdMatch[2].trim(), level: mdMatch[1].length });
+      }
+    });
+    return list;
+  });
+
+  function scrollToHeading(headingTitle: string) {
+    const cardEl = document.getElementById(`wikicard-${card.id}`);
+    if (!cardEl) return;
+    const elements = cardEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    for (const el of Array.from(elements)) {
+      if (el.textContent?.trim().toLowerCase() === headingTitle.toLowerCase()) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
+    }
+  }
+
+  async function publishComment() {
+    if (!newCommentText.trim() || !event) return;
+    publishingComment = true;
+    try {
+      const commentTemplate: EventTemplate = {
+        kind: 1111,
+        tags: [
+          ['a', `${wikiKind}:${pubkey}:${dTag}`, seenOn[0] || ''],
+          ['e', event.id, seenOn[0] || '']
+        ],
+        content: newCommentText.trim(),
+        created_at: Math.round(Date.now() / 1000)
+      };
+
+      const signed = await signer.signEvent(commentTemplate);
+      const relays = unique(
+        (await loadRelayList($account!.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url),
+        seenOn
+      );
+
+      await Promise.all(
+        relays.map(async (url: string) => {
+          try {
+            const r = await pool.ensureRelay(url);
+            await r.publish(signed);
+          } catch (err) {
+            console.warn('Failed publishing comment to', url, err);
+          }
+        })
+      );
+
+      comments = [...comments, signed].sort((a, b) => a.created_at - b.created_at);
+      newCommentText = '';
+    } catch (err) {
+      alert('Failed to publish comment: ' + err);
+    } finally {
+      publishingComment = false;
+    }
+  }
 
   const articleCard = card as ArticleCard;
   const dTag = articleCard.data[0];
@@ -153,6 +236,81 @@
           onevent(evt) {
             if (!suggestions.some((s) => s.id === evt.id)) {
               suggestions = [...suggestions, evt].sort((a, b) => b.created_at - a.created_at);
+            }
+          }
+        }
+      );
+    })();
+
+    // load comments
+    (async () => {
+      let relays = await loadRelayList(pubkey);
+      pool.subscribeMany(
+        relays.items
+          .filter((ri) => ri.read)
+          .map((ri) => ri.url)
+          .concat((card as ArticleCard).relayHints || []),
+        [
+          {
+            kinds: [1, 1111],
+            '#a': [`${wikiKind}:${pubkey}:${dTag}`]
+          }
+        ],
+        {
+          id: 'comments-' + dTag,
+          onevent(evt) {
+            if (!comments.some((c) => c.id === evt.id)) {
+              comments = [...comments, evt].sort((a, b) => a.created_at - b.created_at);
+            }
+          }
+        }
+      );
+    })();
+
+    // load history revisions
+    (async () => {
+      let relays = await loadRelayList(pubkey);
+      pool.subscribeMany(
+        relays.items
+          .filter((ri) => ri.read)
+          .map((ri) => ri.url)
+          .concat((card as ArticleCard).relayHints || []),
+        [
+          {
+            kinds: [wikiKind],
+            '#d': [dTag]
+          }
+        ],
+        {
+          id: 'history-' + dTag,
+          onevent(evt) {
+            if (!historyEvents.some((h) => h.id === evt.id)) {
+              historyEvents = [...historyEvents, evt].sort((a, b) => b.created_at - a.created_at);
+            }
+          }
+        }
+      );
+    })();
+
+    // load backlinks
+    (async () => {
+      let relays = await loadRelayList(pubkey);
+      pool.subscribeMany(
+        relays.items
+          .filter((ri) => ri.read)
+          .map((ri) => ri.url)
+          .concat((card as ArticleCard).relayHints || []),
+        [
+          {
+            kinds: [wikiKind],
+            '#a': [`${wikiKind}:${pubkey}:${dTag}`]
+          }
+        ],
+        {
+          id: 'backlinks-' + dTag,
+          onevent(evt) {
+            if (!backlinks.some((b) => b.id === evt.id)) {
+              backlinks = [...backlinks, evt];
             }
           }
         }
@@ -509,14 +667,223 @@
       </div>
     {/if}
 
-    <!-- Content -->
-    {#if view === 'raw'}
-      <div class="font-mono whitespace-pre-wrap">{rawEvent}</div>
-    {:else if view === 'asciidoc'}
-      <div class="prose whitespace-pre-wrap">{event.content}</div>
-    {:else if view === 'formatted'}
-      <div class="prose prose-p:my-0 prose-li:my-0">
-        <ArticleContent {event} {createChild} />
+    <!-- Tabs Header -->
+    <div class="mt-4 border-b border-stone-250 flex items-center space-x-4">
+      <button
+        onclick={() => activeTab = 'article'}
+        class="pb-2 text-sm font-bold border-b-2 transition-colors focus:outline-none"
+        class:border-indigo-600={activeTab === 'article'}
+        class:text-indigo-600={activeTab === 'article'}
+        class:border-transparent={activeTab !== 'article'}
+        class:text-stone-500={activeTab !== 'article'}
+      >
+        Article
+      </button>
+      <button
+        onclick={() => activeTab = 'discussion'}
+        class="pb-2 text-sm font-bold border-b-2 transition-colors focus:outline-none flex items-center gap-1.5"
+        class:border-indigo-600={activeTab === 'discussion'}
+        class:text-indigo-600={activeTab === 'discussion'}
+        class:border-transparent={activeTab !== 'discussion'}
+        class:text-stone-500={activeTab !== 'discussion'}
+      >
+        Discussion
+        {#if comments.length > 0}
+          <span class="bg-stone-200 text-stone-700 px-1.5 py-0.5 rounded-full text-[10px]">
+            {comments.length}
+          </span>
+        {/if}
+      </button>
+      <button
+        onclick={() => activeTab = 'history'}
+        class="pb-2 text-sm font-bold border-b-2 transition-colors focus:outline-none"
+        class:border-indigo-600={activeTab === 'history'}
+        class:text-indigo-600={activeTab === 'history'}
+        class:border-transparent={activeTab !== 'history'}
+        class:text-stone-500={activeTab !== 'history'}
+      >
+        History
+      </button>
+    </div>
+
+    <!-- Tab Contents -->
+    {#if activeTab === 'article'}
+      <!-- Info / Metadata Box (Wiki Sidebar) -->
+      <div class="mt-4 p-3 bg-stone-50 border border-stone-200 rounded shadow-sm flex flex-col md:flex-row justify-between text-xs text-stone-600 gap-2 mb-4">
+        <div>
+          <span class="font-semibold text-stone-700">Page size:</span>
+          {event.content.length} characters ({Math.round(event.content.length / 10.24) / 100} KB)
+        </div>
+        <div>
+          <span class="font-semibold text-stone-700">Revisions:</span>
+          {historyEvents.filter(h => h.pubkey === event?.pubkey).length || 1}
+        </div>
+        <div>
+          <span class="font-semibold text-stone-700">Contributors:</span>
+          {unique(historyEvents.map(h => h.pubkey)).length || 1}
+        </div>
+        <div>
+          <span class="font-semibold text-stone-700">First published:</span>
+          {#if historyEvents.length > 0}
+            {formatDate(historyEvents[historyEvents.length - 1].created_at)}
+          {:else}
+            {formatDate(event.created_at)}
+          {/if}
+        </div>
+      </div>
+
+      <!-- Table of Contents -->
+      {#if headings.length > 0}
+        <div class="mt-2 mb-6 p-4 border border-stone-200 rounded-md bg-stone-50/50 max-w-sm">
+          <div class="text-xs font-bold text-stone-700 uppercase tracking-wider mb-2 border-b border-stone-200 pb-1 flex justify-between items-center">
+            <span>Table of Contents</span>
+          </div>
+          <ul class="space-y-1.5 text-sm">
+            {#each headings as heading}
+              <li style:padding-left={`${(heading.level - 1) * 12}px`}>
+                <a
+                  href="javascript:void(0)"
+                  onclick={() => scrollToHeading(heading.title)}
+                  class="text-indigo-600 hover:text-indigo-850 hover:underline inline-block break-all"
+                >
+                  {heading.title}
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+
+      <!-- Main Article Content -->
+      {#if view === 'raw'}
+        <div class="font-mono whitespace-pre-wrap text-sm border border-stone-200 p-3 bg-stone-50 rounded">{rawEvent}</div>
+      {:else if view === 'asciidoc'}
+        <div class="prose whitespace-pre-wrap text-sm border border-stone-200 p-3 bg-stone-50 rounded">{event.content}</div>
+      {:else if view === 'formatted'}
+        <div class="prose prose-p:my-0 prose-li:my-0">
+          <ArticleContent {event} {createChild} />
+        </div>
+      {/if}
+
+      <!-- Backlinks section ("What links here") -->
+      <div class="mt-8 border-t border-stone-250 pt-4">
+        <details class="group">
+          <summary class="cursor-pointer text-xs font-semibold text-stone-500 hover:text-stone-850 focus:outline-none flex items-center select-none">
+            <svg class="w-3.5 h-3.5 mr-1 transform group-open:rotate-90 transition-transform stroke-current" fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+            What links here ({backlinks.length})
+          </summary>
+          {#if backlinks.length === 0}
+            <div class="mt-2 text-xs text-stone-400 italic pl-5">No other articles link to this article yet.</div>
+          {:else}
+            <ul class="mt-2 text-xs space-y-1 pl-5 list-disc text-indigo-600">
+              {#each backlinks as link (link.id)}
+                <li>
+                  <a
+                    href="javascript:void(0)"
+                    onclick={() => {
+                      createChild({
+                        id: next(),
+                        type: 'article',
+                        data: [getTagOr(link, 'd'), link.pubkey],
+                        actualEvent: link
+                      } as ArticleCard);
+                    }}
+                    class="hover:underline"
+                  >
+                    {getTagOr(link, 'title') || getTagOr(link, 'd')}
+                  </a>
+                  <span class="text-stone-400">by <UserLabel pubkey={link.pubkey} {createChild} /></span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </details>
+      </div>
+
+    {:else if activeTab === 'discussion'}
+      <!-- Comments / Discussion -->
+      <div class="mt-4 space-y-3">
+        {#if comments.length === 0}
+          <div class="text-center py-6 text-stone-400 text-sm italic">
+            No discussion on this article yet. Be the first to start the talk page!
+          </div>
+        {:else}
+          {#each comments as comm (comm.id)}
+            <div class="p-3 bg-stone-50 border border-stone-200 rounded shadow-sm">
+              <div class="flex justify-between items-center border-b border-stone-200/50 pb-1 mb-2 text-xs">
+                <span class="font-semibold text-stone-700">
+                  <UserLabel pubkey={comm.pubkey} {createChild} />
+                </span>
+                <span class="text-stone-400">
+                  {formatDate(comm.created_at)}
+                </span>
+              </div>
+              <div class="text-stone-800 text-sm whitespace-pre-wrap select-text">{comm.content}</div>
+            </div>
+          {/each}
+        {/if}
+
+        <!-- Post a Comment -->
+        {#if $account}
+          <div class="mt-6 border-t border-stone-200 pt-4">
+            <h4 class="text-sm font-semibold text-stone-700 mb-2">Add to the discussion:</h4>
+            <textarea
+              bind:value={newCommentText}
+              placeholder="Provide constructive feedback, propose edits, or ask questions about the article..."
+              class="w-full h-24 p-2 text-sm border border-stone-300 rounded focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+              disabled={publishingComment}
+            ></textarea>
+            <div class="mt-2 flex justify-end">
+              <button
+                onclick={publishComment}
+                disabled={publishingComment || !newCommentText.trim()}
+                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                {#if publishingComment}Publishing...{:else}Post Comment{/if}
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div class="mt-6 border-t border-stone-200 pt-4 text-center text-xs text-stone-500 italic">
+            Please log in with a Nostr extension to participate in the discussion.
+          </div>
+        {/if}
+      </div>
+
+    {:else if activeTab === 'history'}
+      <!-- History Revisions -->
+      <div class="mt-4 space-y-2">
+        <h4 class="text-sm font-semibold text-stone-700 mb-3">Revision History:</h4>
+        {#if historyEvents.length === 0}
+          <div class="text-xs text-stone-400 italic">Loading revision history...</div>
+        {:else}
+          <div class="border border-stone-200 rounded divide-y divide-stone-200">
+            {#each historyEvents as rev}
+              <div class="p-3 bg-white hover:bg-stone-50 flex justify-between items-center text-xs">
+                <div>
+                  <span class="font-mono text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded mr-2">
+                    {rev.id.substring(0, 8)}
+                  </span>
+                  <span class="text-stone-500 font-semibold">{formatDate(rev.created_at)}</span>
+                  <span class="text-stone-400 mx-1.5">•</span>
+                  <span>by <UserLabel pubkey={rev.pubkey} {createChild} /></span>
+                  {#if getTagOr(rev, 'summary')}
+                    <span class="text-stone-400 block mt-1 italic">"{getTagOr(rev, 'summary')}"</span>
+                  {/if}
+                </div>
+                <button
+                  onclick={() => {
+                    event = rev;
+                    activeTab = 'article';
+                  }}
+                  class="px-2 py-0.5 border border-stone-300 rounded bg-stone-50 hover:bg-stone-100 font-semibold"
+                >
+                  View Revision
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
 
