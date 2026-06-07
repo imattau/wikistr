@@ -751,7 +751,7 @@
 
       <!-- Table of Contents -->
       {#if headings.length > 0}
-        <div class="mt-2 mb-6 p-4 border border-stone-200 rounded-md bg-stone-50/50 w-full">
+        <div class="mt-2 mb-6 p-4 border border-stone-200 rounded-md bg-stone-50/50 w-full max-w-none" style="width: 100% !important; max-width: none !important;">
           <div class="text-xs font-bold text-stone-700 uppercase tracking-wider mb-2 border-b border-stone-200 pb-1 flex justify-between items-center">
             <span>Table of Contents</span>
           </div>
