@@ -312,7 +312,7 @@
   function edit() {
     const prevCard = { ...(card as ArticleCard) };
     if (event) {
-      prevCard.actualEvent = event;
+      prevCard.actualEvent = { ...event, tags: event.tags.map(t => [...t]) };
     }
     replaceSelf({
       id: next(),

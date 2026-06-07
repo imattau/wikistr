@@ -33,6 +33,14 @@ export function serializeCardForRouter(card: Card) {
       if (serialized.actualEvent)
         serialized.actualEvent = eventOutFromProxy(serialized.actualEvent);
       break;
+    case 'editor':
+      if (serialized.data && serialized.data.previous) {
+        serialized.data = {
+          ...serialized.data,
+          previous: serializeCardForRouter(serialized.data.previous)
+        };
+      }
+      break;
   }
 
   return serialized;
