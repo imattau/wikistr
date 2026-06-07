@@ -16,6 +16,7 @@
   import { pool } from '@nostr/gadgets/global';
   import { loadRelayList } from '@nostr/gadgets/lists';
   import { normalizeIdentifier } from '@nostr/tools/nip54';
+  import debounce from 'debounce';
 
   interface Props {
     replaceSelf: (card: Card) => void;
@@ -31,6 +32,90 @@
   let targets: { url: string; status: 'pending' | 'success' | 'failure'; message?: string }[] =
     $state([]);
   let previewing = $state(false);
+
+  // Article lookup state
+  let textareaEl = $state<HTMLTextAreaElement | null>(null);
+  let showLookup = $state(false);
+  let lookupQuery = $state('');
+  let lookupResults = $state<any[]>([]);
+  let lookupSearching = $state(false);
+  let lookupSub = $state<any>(null);
+
+  async function performLookupSearch() {
+    if (lookupSub) {
+      lookupSub.close();
+      lookupSub = null;
+    }
+    lookupResults = [];
+    if (!lookupQuery.trim()) {
+      lookupSearching = false;
+      return;
+    }
+    lookupSearching = true;
+
+    const searchRelays = unique(
+      (await loadRelayList($account?.pubkey || '')).items.filter((ri) => ri.read).map((ri) => ri.url),
+      DEFAULT_WIKI_RELAYS
+    );
+
+    lookupSub = pool.subscribeMany(
+      searchRelays,
+      [
+        {
+          kinds: [wikiKind],
+          limit: 50
+        }
+      ],
+      {
+        onevent(evt) {
+          const title = getTagOr(evt, 'title') || getTagOr(evt, 'd');
+          if (
+            title.toLowerCase().includes(lookupQuery.toLowerCase()) &&
+            !lookupResults.some((r) => r.id === evt.id)
+          ) {
+            lookupResults = [...lookupResults, evt].slice(0, 10);
+          }
+        },
+        oneose() {
+          lookupSearching = false;
+        }
+      }
+    );
+  }
+
+  const debouncedLookup = debounce(performLookupSearch, 400);
+
+  $effect(() => {
+    if (lookupQuery !== undefined) {
+      debouncedLookup();
+    }
+  });
+
+  function insertLink(targetTitle: string) {
+    if (!textareaEl) return;
+    const start = textareaEl.selectionStart;
+    const end = textareaEl.selectionEnd;
+    const text = data.content;
+    const selection = text.substring(start, end);
+
+    let linkText = '';
+    if (selection) {
+      linkText = `[[${targetTitle}|${selection}]]`;
+    } else {
+      linkText = `[[${targetTitle}]]`;
+    }
+
+    data.content = text.substring(0, start) + linkText + text.substring(end);
+    showLookup = false;
+    lookupQuery = '';
+    lookupResults = [];
+
+    setTimeout(() => {
+      textareaEl?.focus();
+      const newCursorPos = start + linkText.length;
+      textareaEl?.setSelectionRange(newCursorPos, newCursorPos);
+    }, 50);
+  }
 
   let isSomeoneElsesArticle = $derived(
     data.previous &&
@@ -180,7 +265,62 @@
   <div class="mt-2">
     <!-- svelte-ignore a11y_label_has_associated_control -->
     <label>
-      Article
+      <div class="flex justify-between items-center mt-1 mb-1">
+        <span class="font-semibold text-stone-700">Article</span>
+        {#if !previewing}
+          <button
+            type="button"
+            onclick={() => showLookup = !showLookup}
+            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold focus:outline-none flex items-center bg-indigo-50 px-2.5 py-1 rounded border border-indigo-150 transition-colors"
+          >
+            <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+            Insert Link
+          </button>
+        {/if}
+      </div>
+
+      {#if showLookup && !previewing}
+        <div class="my-2 p-3 bg-stone-50 border border-stone-200 rounded-lg shadow-inner">
+          <div class="text-xs font-semibold text-stone-700 mb-1.5 flex justify-between items-center">
+            <span>Search articles to reference:</span>
+            <button onclick={() => { showLookup = false; lookupQuery = ''; }} class="text-[10px] text-stone-400 hover:text-stone-600">Cancel</button>
+          </div>
+          <div class="flex gap-2">
+            <input
+              bind:value={lookupQuery}
+              placeholder="Type title to lookup..."
+              class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-stone-300 rounded-md p-1.5"
+            />
+          </div>
+          {#if lookupSearching}
+            <div class="text-[10px] text-stone-400 mt-2 italic">Searching relays...</div>
+          {/if}
+          {#if lookupResults.length > 0}
+            <div class="mt-2 border border-stone-200 rounded divide-y divide-stone-150 max-h-40 overflow-y-auto bg-white shadow-sm">
+              {#each lookupResults as res (res.id)}
+                <button
+                  type="button"
+                  onclick={() => insertLink(getTagOr(res, 'title') || getTagOr(res, 'd'))}
+                  class="w-full text-left p-2 hover:bg-stone-50 text-xs font-medium text-stone-700 flex justify-between items-center focus:outline-none transition-colors border-none"
+                >
+                  <span class="font-semibold text-indigo-700">{getTagOr(res, 'title') || getTagOr(res, 'd')}</span>
+                  <span class="text-[9px] text-stone-400">by {res.pubkey.substring(0, 8)}</span>
+                </button>
+              {/each}
+            </div>
+          {:else if lookupQuery && !lookupSearching}
+            <div class="text-[10px] text-stone-400 mt-2 italic">No matching pages found on relays. You can still insert this as a new wikilink:</div>
+            <button
+              type="button"
+              onclick={() => insertLink(lookupQuery)}
+              class="mt-2 px-3 py-1 bg-stone-200 hover:bg-stone-300 rounded text-[10px] font-semibold text-stone-700 transition-colors"
+            >
+              Insert "[[{lookupQuery}]]"
+            </button>
+          {/if}
+        </div>
+      {/if}
+
       {#if previewing}
         <div class="prose prose-p:my-0 prose-li:my-0">
           <SvelteAsciidoc
@@ -190,6 +330,7 @@
         </div>
       {:else}
         <textarea
+          bind:this={textareaEl}
           placeholder="The **Greek alphabet** has been used to write the [[Greek language]] sincie the late 9th or early 8th century BC. The Greek alphabet is the ancestor of the [[Latin]] and [[Cyrillic]] scripts."
           bind:value={data.content}
           class="h-64 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
