@@ -4,7 +4,7 @@ export type EditorData = {
   title: string;
   summary: string;
   content: string;
-  previous: ArticleCard | undefined;
+  previous: Card | undefined;
 };
 
 export type Card =

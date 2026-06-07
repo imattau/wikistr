@@ -34,6 +34,8 @@
   let uwrcancel: () => void;
   let search: SubCloser;
   let subs: SubCloser[] = [];
+  let redirectTimeout: ReturnType<typeof setTimeout> | undefined;
+  let redirected = false;
 
   onMount(() => {
     query = searchCard.data;
@@ -58,6 +60,10 @@
     if (uwrcancel) uwrcancel();
     subs.forEach((sub) => sub.close());
     if (search) search.close();
+    if (redirectTimeout) {
+      clearTimeout(redirectTimeout);
+      redirectTimeout = undefined;
+    }
   }
 
   async function performSearch() {
@@ -66,6 +72,7 @@
     tried = false;
     eosed = 0;
     results = [];
+    redirected = false;
 
     setTimeout(() => {
       tried = true;
@@ -133,10 +140,31 @@
             if (searchCard.preferredAuthors.includes(evt.pubkey)) {
               // we found an exact match that fits the list of preferred authors
               // jump straight into it
+              redirected = true;
+              if (redirectTimeout) clearTimeout(redirectTimeout);
               openArticle(evt, undefined, true);
             }
 
-            if (addUniqueTaggedReplaceable(results, evt)) update();
+            if (addUniqueTaggedReplaceable(results, evt)) {
+              update();
+
+              // If we have not redirected yet, check if this is an exact match and schedule a fallback redirect
+              if (!redirected && getTagOr(evt, 'd') === normalizeIdentifier(query)) {
+                if (!redirectTimeout) {
+                  redirectTimeout = setTimeout(() => {
+                    if (redirected) return;
+                    // Find the best exact match from results (sorted by WoT)
+                    const exactMatches = results.filter(
+                      (r) => getTagOr(r, 'd') === normalizeIdentifier(query)
+                    );
+                    if (exactMatches.length > 0) {
+                      redirected = true;
+                      openArticle(exactMatches[0], undefined, true);
+                    }
+                  }, 800);
+                }
+              }
+            }
           },
           oneose,
           receivedEvent
@@ -252,7 +280,7 @@
     </p>
     <button
       on:click={() => {
-        replaceSelf({ id: next(), type: 'editor', data: { title: query, previous: card } });
+        replaceSelf({ id: next(), type: 'editor', data: { title: query, summary: '', content: '', previous: card } });
       }}
       class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
     >

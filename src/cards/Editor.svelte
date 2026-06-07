@@ -180,7 +180,7 @@
   }
 
   async function suggest() {
-    if (!isSomeoneElsesArticle || !data.previous) return;
+    if (!isSomeoneElsesArticle || !data.previous || data.previous.type !== 'article') return;
     const originalPubkey = data.previous.data[1];
     const originalDTag = data.previous.data[0];
 
