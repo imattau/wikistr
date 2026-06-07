@@ -287,6 +287,10 @@
 
   let author = $state<NostrUser>(bareNostrUser(pubkey));
 
+  let loadedRelays = $state<any>(null);
+  let readRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.read).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
+  let writeRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.write).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
+
   let title = $derived(event?.tags?.find?.(([k]) => k === 'title')?.[1] || dTag);
   let summary = $derived(event?.tags?.find(([k]) => k === 'summary')?.[1]);
   let tagsList = $derived(event?.tags?.filter(([k]) => k === 't').map(([_, v]) => v) || []);
@@ -346,21 +350,27 @@
 
   onMount(() => {
     loadPrivateTags();
-    // load this article
+    
+    // Fetch relay list once and store it
+    loadRelayList(pubkey).then((res) => {
+      loadedRelays = res;
+    });
+
     if (articleCard.actualEvent) {
       event = articleCard.actualEvent;
       seenOn = articleCard.relayHints || [];
-      return;
     }
 
-    (async () => {
-      let relays = await loadRelayList(pubkey);
+    loadNostrUser(pubkey).then((user) => {
+      author = user;
+    });
+  });
 
-      pool.subscribeMany(
-        relays.items
-          .filter((ri) => ri.write)
-          .map((ri) => ri.url)
-          .concat((card as ArticleCard).relayHints || []),
+  // Subscribe to the main article
+  $effect(() => {
+    if (writeRelays.length > 0 && !event) {
+      const sub = pool.subscribeMany(
+        writeRelays,
         [
           {
             authors: [pubkey],
@@ -372,8 +382,7 @@
           id: 'article',
           receivedEvent(relay, _id) {
             if (seenOn.indexOf(relay.url) === -1) {
-              seenOn.push(relay.url);
-              seenOn = seenOn;
+              seenOn = [...seenOn, relay.url];
             }
           },
           onevent(evt) {
@@ -384,15 +393,15 @@
           }
         }
       );
-    })();
+      return () => sub.close();
+    }
+  });
 
-    (async () => {
-      let relays = await loadRelayList(pubkey);
-      pool.subscribeMany(
-        relays.items
-          .filter((ri) => ri.read)
-          .map((ri) => ri.url)
-          .concat((card as ArticleCard).relayHints || []),
+  // Subscribe to suggestions & backlinks once readRelays are loaded (after primary load)
+  $effect(() => {
+    if (readRelays.length > 0 && event) {
+      const suggestionsSub = pool.subscribeMany(
+        readRelays,
         [
           {
             kinds: [gitPatchKind],
@@ -408,66 +417,9 @@
           }
         }
       );
-    })();
 
-    // load comments
-    (async () => {
-      let relays = await loadRelayList(pubkey);
-      pool.subscribeMany(
-        relays.items
-          .filter((ri) => ri.read)
-          .map((ri) => ri.url)
-          .concat((card as ArticleCard).relayHints || []),
-        [
-          {
-            kinds: [1, 1111],
-            '#a': [`${wikiKind}:${pubkey}:${dTag}`]
-          }
-        ],
-        {
-          id: 'comments-' + dTag,
-          onevent(evt) {
-            if (!comments.some((c) => c.id === evt.id)) {
-              comments = [...comments, evt].sort((a, b) => a.created_at - b.created_at);
-            }
-          }
-        }
-      );
-    })();
-
-    // load history revisions
-    (async () => {
-      let relays = await loadRelayList(pubkey);
-      pool.subscribeMany(
-        relays.items
-          .filter((ri) => ri.read)
-          .map((ri) => ri.url)
-          .concat((card as ArticleCard).relayHints || []),
-        [
-          {
-            kinds: [wikiKind],
-            '#d': [dTag]
-          }
-        ],
-        {
-          id: 'history-' + dTag,
-          onevent(evt) {
-            if (!historyEvents.some((h) => h.id === evt.id)) {
-              historyEvents = [...historyEvents, evt].sort((a, b) => b.created_at - a.created_at);
-            }
-          }
-        }
-      );
-    })();
-
-    // load backlinks
-    (async () => {
-      let relays = await loadRelayList(pubkey);
-      pool.subscribeMany(
-        relays.items
-          .filter((ri) => ri.read)
-          .map((ri) => ri.url)
-          .concat((card as ArticleCard).relayHints || []),
+      const backlinksSub = pool.subscribeMany(
+        readRelays,
         [
           {
             kinds: [wikiKind],
@@ -483,11 +435,64 @@
           }
         }
       );
-    })();
 
-    (async () => {
-      author = await loadNostrUser(pubkey);
-    })();
+      return () => {
+        suggestionsSub.close();
+        backlinksSub.close();
+      };
+    }
+  });
+
+  // Lazy-load comments (Discussion tab)
+  let commentsLoaded = false;
+  $effect(() => {
+    if (activeTab === 'discussion' && readRelays.length > 0 && event && !commentsLoaded) {
+      commentsLoaded = true;
+      const sub = pool.subscribeMany(
+        readRelays,
+        [
+          {
+            kinds: [1, 1111],
+            '#a': [`${wikiKind}:${pubkey}:${dTag}`]
+          }
+        ],
+        {
+          id: 'comments-' + dTag,
+          onevent(evt) {
+            if (!comments.some((c) => c.id === evt.id)) {
+              comments = [...comments, evt].sort((a, b) => a.created_at - b.created_at);
+            }
+          }
+        }
+      );
+      return () => sub.close();
+    }
+  });
+
+  // Lazy-load history revisions (History tab)
+  let historyLoaded = false;
+  $effect(() => {
+    if (activeTab === 'history' && readRelays.length > 0 && event && !historyLoaded) {
+      historyLoaded = true;
+      const sub = pool.subscribeMany(
+        readRelays,
+        [
+          {
+            kinds: [wikiKind],
+            '#d': [dTag]
+          }
+        ],
+        {
+          id: 'history-' + dTag,
+          onevent(evt) {
+            if (!historyEvents.some((h) => h.id === evt.id)) {
+              historyEvents = [...historyEvents, evt].sort((a, b) => b.created_at - a.created_at);
+            }
+          }
+        }
+      );
+      return () => sub.close();
+    }
   });
 
   onMount(() => {
