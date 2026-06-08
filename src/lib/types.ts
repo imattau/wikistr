@@ -32,6 +32,8 @@ export function serializeCardForRouter(card: Card) {
     case 'article':
       if (serialized.actualEvent)
         serialized.actualEvent = eventOutFromProxy(serialized.actualEvent);
+      if (serialized.versions)
+        serialized.versions = [...serialized.versions].map(eventOutFromProxy);
       break;
     case 'editor':
       if (serialized.data && serialized.data.previous) {

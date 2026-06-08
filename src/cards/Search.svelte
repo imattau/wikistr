@@ -292,10 +292,12 @@
         type: 'article',
         data: [getTagOr(result, 'd'), result.pubkey],
         relayHints: seenCache[result.id],
-        actualEvent: result,
+        actualEvent: { ...result, tags: result.tags.map(t => [...t]) },
         versions:
           getTagOr(result, 'd') === normalizeIdentifier(query)
-            ? results.filter((evt) => getTagOr(evt, 'd') === normalizeIdentifier(query))
+            ? results
+                .filter((evt) => getTagOr(evt, 'd') === normalizeIdentifier(query))
+                .map((evt) => ({ ...evt, tags: evt.tags.map((t) => [...t]) }))
             : undefined
       };
       if (ev?.button === 1) createChild(articleCard);
