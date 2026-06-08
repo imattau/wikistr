@@ -20,10 +20,10 @@
   let prevCardsLength = 0;
 
   $effect(() => {
-    if ($cards.length < 2) {
+    if ($cards.length < 1) {
       isWelcomeCollapsed = false;
-    } else if ($cards.length >= 2 && prevCardsLength < 2) {
-      isWelcomeCollapsed = true; // Auto-collapse when second column is opened
+    } else if ($cards.length >= 1 && prevCardsLength < 1) {
+      isWelcomeCollapsed = true; // Auto-collapse when first column is opened
     }
     prevCardsLength = $cards.length;
   });
@@ -83,7 +83,7 @@
 <div class="flex overflow-x-scroll pb-2" draggable="false" bind:this={slider}>
   <CardElement 
     card={{ type: 'welcome', id: -1 }} 
-    collapsed={$cards.length >= 2 && isWelcomeCollapsed}
+    collapsed={$cards.length >= 1 && isWelcomeCollapsed}
     onToggleCollapse={() => isWelcomeCollapsed = !isWelcomeCollapsed}
   />
 
