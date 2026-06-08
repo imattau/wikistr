@@ -26,6 +26,9 @@
 
   let { card, createChild, replaceSelf, back }: Props = $props();
   let event = $state<NostrEvent | null>(null);
+  let reactionEvents = $state<NostrEvent[]>([]);
+  let hasMarkedAuthoritative = $derived(reactionEvents.some(r => r.pubkey === $account?.pubkey && r.content === '✅'));
+  let authoritativeCount = $derived(reactionEvents.filter(r => r.content === '✅').length);
   let suggestions = $state<NostrEvent[]>([]);
   let showSuggestionsPanel = $state(false);
   let selectedSuggestion = $state<NostrEvent | null>(null);
@@ -551,6 +554,63 @@
     }
   });
 
+  $effect(() => {
+    if (readRelays.length > 0 && event) {
+      const sub = pool.subscribeMany(
+        readRelays,
+        [
+          {
+            kinds: [reactionKind],
+            '#a': [`${wikiKind}:${pubkey}:${dTag}`]
+          }
+        ],
+        {
+          id: 'reactions-' + dTag,
+          onevent(evt) {
+            if (!reactionEvents.some((r) => r.id === evt.id)) {
+              reactionEvents = [...reactionEvents, evt];
+            }
+          }
+        }
+      );
+      return () => sub.close();
+    }
+  });
+
+  async function toggleAuthoritative() {
+    if (!event) return;
+    if (!$account) {
+      alert('Please log in with a Nostr extension to vote.');
+      return;
+    }
+    if (hasMarkedAuthoritative) return;
+
+    let eventTemplate: EventTemplate = {
+      kind: reactionKind,
+      tags: [
+        ['a', `${wikiKind}:${pubkey}:${dTag}`, seenOn[0] || ''],
+        ['e', event.id, seenOn[1] || seenOn[0] || '']
+      ],
+      content: '✅',
+      created_at: Math.round(Date.now() / 1000)
+    };
+
+    try {
+      let reaction = await signer.signEvent(eventTemplate);
+      seenOn.forEach(async (url) => {
+        try {
+          const r = await pool.ensureRelay(url);
+          await r.publish(reaction);
+        } catch (err) {
+          console.warn('failed to publish reaction to', url, err);
+        }
+      });
+      reactionEvents = [...reactionEvents, reaction];
+    } catch (err) {
+      console.warn('Failed to publish reaction', err);
+    }
+  }
+
   onMount(() => {
     // redraw likes thing when we have a logged in user
     return account.subscribe(setupLikes);
@@ -704,7 +764,26 @@
         </div>
       {/if}
       <div class="ml-2 mb-4">
-        <div class="mt-2 font-bold text-4xl">{title || dTag}</div>
+        <div class="mt-2 font-bold text-4xl flex flex-wrap items-center gap-3">
+          <span>{title || dTag}</span>
+          <button
+            type="button"
+            onclick={toggleAuthoritative}
+            class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full border transition-all duration-200 cursor-pointer shadow-sm
+              {hasMarkedAuthoritative 
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-250' 
+                : 'bg-stone-50 text-stone-600 border-stone-250 hover:bg-stone-100 hover:text-stone-800'}"
+            title={hasMarkedAuthoritative ? 'You marked this article as authoritative' : 'Mark this article as authoritative'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-3.5 h-3.5 {hasMarkedAuthoritative ? 'text-emerald-600' : 'text-stone-400'}">
+              <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd" />
+            </svg>
+            <span>Authoritative</span>
+            {#if authoritativeCount > 0}
+              <span class="bg-white/80 px-1.5 py-0.5 rounded-full text-[10px] font-bold shadow-sm">{authoritativeCount}</span>
+            {/if}
+          </button>
+        </div>
         <div>
           by <UserLabel pubkey={event.pubkey} {createChild} />
           {#if event.created_at}

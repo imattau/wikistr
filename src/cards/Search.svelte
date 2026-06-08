@@ -8,7 +8,7 @@
   import { loadRelayList } from '@nostr/gadgets/lists';
   import { normalizeIdentifier } from '@nostr/tools/nip54';
 
-  import { wot, wikiKind, userWikiRelays } from '$lib/nostr';
+  import { wot, wikiKind, reactionKind, userWikiRelays } from '$lib/nostr';
   import type { ArticleCard, SearchCard, Card } from '$lib/types';
   import { addUniqueTaggedReplaceable, getTagOr, next, unique } from '$lib/utils';
   import { DEFAULT_SEARCH_RELAYS } from '$lib/defaults';
@@ -17,29 +17,31 @@
   import { page } from '$app/state';
   import { cards } from '$lib/state';
 
-  export let card: Card;
-  export let replaceSelf: (card: Card) => void;
-  export let createChild: (card: Card) => void;
-  let tried = false;
-  let eosed = 0;
-  let editable = false;
+  interface Props {
+    card: Card;
+    replaceSelf: (card: Card) => void;
+    createChild: (card: Card) => void;
+  }
 
-  const searchCard = card as SearchCard;
+  let { card, replaceSelf, createChild }: Props = $props();
+  let tried = $state(false);
+  let eosed = $state(0);
+  let editable = $state(false);
 
-  let query: string;
+  let searchCard = $derived(card as SearchCard);
+
+  let query = $state((card as SearchCard).data);
   let seenCache: { [id: string]: string[] } = {};
-  let results: NostrEvent[] = [];
+  let results = $state<NostrEvent[]>([]);
+  let searchReactions = $state<{ [aCoordinate: string]: NostrEvent[] }>({});
 
   // close handlers
   let uwrcancel: () => void;
   let search: SubCloser;
+  let reactionSub: SubCloser | null = null;
   let subs: SubCloser[] = [];
   let redirectTimeout: ReturnType<typeof setTimeout> | undefined;
   let redirected = false;
-
-  onMount(() => {
-    query = searchCard.data;
-  });
 
   onMount(() => {
     // we won't do any searches if we already have the results
@@ -60,6 +62,10 @@
     if (uwrcancel) uwrcancel();
     subs.forEach((sub) => sub.close());
     if (search) search.close();
+    if (reactionSub) {
+      reactionSub.close();
+      reactionSub = null;
+    }
     if (redirectTimeout) {
       clearTimeout(redirectTimeout);
       redirectTimeout = undefined;
@@ -81,8 +87,21 @@
       tried = true;
     }, 1500);
 
+    function getAuthoritativeScore(evt: NostrEvent): number {
+      const authorWoT = $wot[evt.pubkey] || 0;
+      const aCoordinate = `${wikiKind}:${evt.pubkey}:${getTagOr(evt, 'd')}`;
+      const reactions = searchReactions[aCoordinate] || [];
+      
+      const reactionsScore = reactions.reduce((sum, r) => {
+        const reactorWoT = $wot[r.pubkey] || 0;
+        return sum + 1 + reactorWoT;
+      }, 0);
+      
+      return authorWoT + reactionsScore;
+    }
+
     const update = debounce(() => {
-      // sort by exact matches first, then by wotness
+      // sort by exact matches first, then by authoritative score (WoT + reactions)
       let normalizedIdentifier = normalizeIdentifier(query);
       results = results.sort((a, b) => {
         if (
@@ -98,10 +117,61 @@
         ) {
           return 1;
         } else {
-          return ($wot[b.pubkey] || 0) - ($wot[a.pubkey] || 0);
+          return getAuthoritativeScore(b) - getAuthoritativeScore(a);
         }
       });
       seenCache = seenCache;
+
+      // Subscribe to reactions for all current results
+      if (reactionSub) {
+        reactionSub.close();
+      }
+      if (results.length > 0) {
+        const coordinates = results.map(r => `${wikiKind}:${r.pubkey}:${getTagOr(r, 'd')}`);
+        const queryRelays = unique($userWikiRelays, DEFAULT_SEARCH_RELAYS);
+        reactionSub = pool.subscribeMany(
+          queryRelays,
+          [
+            {
+              kinds: [reactionKind],
+              '#a': coordinates
+            }
+          ],
+          {
+            id: 'search-reactions-' + query,
+            onevent(evt) {
+              const targetA = evt.tags.find(([k]) => k === 'a')?.[1];
+              if (targetA && evt.content === '✅') {
+                const current = searchReactions[targetA] || [];
+                if (!current.some(r => r.id === evt.id)) {
+                  searchReactions = {
+                    ...searchReactions,
+                    [targetA]: [...current, evt]
+                  };
+                  // Re-sort results inline
+                  results = results.sort((a, b) => {
+                    if (
+                      !isTagQuery &&
+                      getTagOr(a, 'd') === normalizedIdentifier &&
+                      getTagOr(b, 'd') !== normalizedIdentifier
+                    ) {
+                      return -1;
+                    } else if (
+                      !isTagQuery &&
+                      getTagOr(b, 'd') === normalizedIdentifier &&
+                      getTagOr(a, 'd') !== normalizedIdentifier
+                    ) {
+                      return 1;
+                    } else {
+                      return getAuthoritativeScore(b) - getAuthoritativeScore(a);
+                    }
+                  });
+                }
+              }
+            }
+          }
+        );
+      }
     }, 500);
 
     const relaysFromPreferredAuthors = unique(
@@ -274,10 +344,10 @@
 
 <div class="mt-2 font-bold text-4xl">
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  "<span
-    on:dblclick={startEditing}
-    on:blur={finishedEditing}
-    on:keydown={preventKeys}
+  <span
+    ondblclick={startEditing}
+    onblur={finishedEditing}
+    onkeydown={preventKeys}
     contenteditable="plaintext-only"
     bind:textContent={query}
   ></span>"
@@ -291,7 +361,7 @@
       {results.length < 1 ? "Can't find this article." : "Didn't find what you were looking for?"}
     </p>
     <button
-      on:click={() => {
+      onclick={() => {
         replaceSelf({ id: next(), type: 'editor', data: { title: query, summary: '', content: '', previous: card } });
       }}
       class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -299,7 +369,7 @@
       Create this article!
     </button>
     <button
-      on:click={() => createChild({ id: next(), type: 'settings' })}
+      onclick={() => createChild({ id: next(), type: 'settings' })}
       class="ml-1 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
     >
       Add more relays
