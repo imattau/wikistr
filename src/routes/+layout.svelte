@@ -17,13 +17,16 @@
   let slider: HTMLElement;
 
   let isWelcomeCollapsed = $state(false);
+  let isRecentCollapsed = $state(false);
   let prevCardsLength = 0;
 
   $effect(() => {
     if ($cards.length < 1) {
       isWelcomeCollapsed = false;
+      isRecentCollapsed = false;
     } else if ($cards.length >= 1 && prevCardsLength < 1) {
       isWelcomeCollapsed = true; // Auto-collapse when first column is opened
+      isRecentCollapsed = true;
     }
     prevCardsLength = $cards.length;
   });
@@ -85,6 +88,12 @@
     card={{ type: 'welcome', id: -1 }} 
     collapsed={$cards.length >= 1 && isWelcomeCollapsed}
     onToggleCollapse={() => isWelcomeCollapsed = !isWelcomeCollapsed}
+  />
+
+  <CardElement 
+    card={{ type: 'recent', id: -2 }} 
+    collapsed={$cards.length >= 1 && isRecentCollapsed}
+    onToggleCollapse={() => isRecentCollapsed = !isRecentCollapsed}
   />
 
   {#each $cards as card (card.id)}

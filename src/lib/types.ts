@@ -10,6 +10,7 @@ export type EditorData = {
 
 export type Card =
   | WelcomeCard
+  | RecentCard
   | NewCard
   | SearchCard
   | ArticleCard
@@ -55,6 +56,12 @@ function eventOutFromProxy(event: NostrEvent): NostrEvent {
 export type WelcomeCard = {
   id: number;
   type: 'welcome';
+  back?: Card;
+};
+
+export type RecentCard = {
+  id: number;
+  type: 'recent';
   back?: Card;
 };
 

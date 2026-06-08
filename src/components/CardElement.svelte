@@ -8,6 +8,7 @@
   import Article from '$cards/Article.svelte';
   import Editor from '$cards/Editor.svelte';
   import Welcome from '$cards/Welcome.svelte';
+  import Recent from '$cards/Recent.svelte';
   import Search from '$cards/Search.svelte';
   import Settings from '$cards/Settings.svelte';
   import Relay from '$cards/Relay.svelte';
@@ -142,28 +143,38 @@
       <button 
         onclick={onToggleCollapse}
         class="p-1.5 rounded-md hover:bg-stone-100 text-stone-600 transition-colors"
-        title="Expand welcome column"
+        title={card.type === 'welcome' ? 'Expand welcome column' : 'Expand recent articles column'}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5M4.5 4.5l7.5 7.5-7.5 7.5" />
         </svg>
       </button>
       <div class="text-stone-400 font-bold tracking-widest text-xs uppercase whitespace-nowrap rotate-180" style="writing-mode: vertical-lr;">
-        Welcome & Search
+        {#if card.type === 'welcome'}
+          Welcome & Search
+        {:else if card.type === 'recent'}
+          Recent Articles
+        {/if}
       </div>
     </div>
     <!-- Mobile view fallback -->
     <div class="sm:hidden flex justify-between items-center mb-4">
-      <div class="font-bold text-lg">Welcome</div>
+      <div class="font-bold text-lg">
+        {#if card.type === 'welcome'}
+          Welcome
+        {:else if card.type === 'recent'}
+          Recent Articles
+        {/if}
+      </div>
       <button onclick={onToggleCollapse} class="p-1 text-stone-600 hover:bg-stone-100 rounded text-sm">Expand</button>
     </div>
   {:else}
-    {#if card.type === 'welcome' && onToggleCollapse}
+    {#if (card.type === 'welcome' || card.type === 'recent') && onToggleCollapse}
       <div class="hidden sm:flex justify-end mb-2">
         <button 
           onclick={onToggleCollapse}
           class="p-1 rounded-md hover:bg-stone-100 text-stone-500 transition-colors"
-          title="Collapse welcome column"
+          title={card.type === 'welcome' ? 'Collapse welcome column' : 'Collapse recent articles column'}
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5M12 19.5l-7.5-7.5 7.5-7.5" />
@@ -172,7 +183,7 @@
       </div>
     {/if}
 
-    {#if card.type !== 'welcome' && card.type !== 'new'}
+    {#if card.type !== 'welcome' && card.type !== 'new' && card.type !== 'recent'}
       <div class="flex" class:justify-between={card.back} class:justify-end={!card.back}>
         {#if card.back}
           <button aria-label="back" onclick={back}>
@@ -208,6 +219,8 @@
         <Search {createChild} {replaceSelf} {card} />
       {:else if card.type === 'welcome'}
         <Welcome {createChild} />
+      {:else if card.type === 'recent'}
+        <Recent {createChild} />
       {:else if card.type === 'relay'}
         <Relay {createChild} {replaceSelf} {card} />
       {:else if card.type === 'user'}
