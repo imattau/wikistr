@@ -126,8 +126,7 @@
       ? 'sm:min-w-[500px] sm:max-w-[500px] lg:min-w-[48rem] lg:max-w-[48rem] xl:min-w-[56rem] xl:max-w-[56rem]' 
       : 'sm:min-w-[395px] sm:max-w-[395px] lg:min-w-[32rem] lg:max-w-[32rem]'}
   rounded-lg border-8 bg-white
-  h-[calc(100vh_-_32px)]
-  {collapsed ? 'sm:p-2 p-4' : 'p-4'}
+  {collapsed ? 'sm:h-[calc(100vh_-_32px)] h-auto sm:p-2 p-4' : 'h-[calc(100vh_-_32px)] p-4'}
   transition-all duration-300
   scrollbar-thin scrollbar-thumb-stone-300 scrollbar-track-stone-100 hover:scrollbar-thumb-stone-400"
   ondblclick={scrollIntoViewIfNecessary}
@@ -158,18 +157,24 @@
       </div>
     </div>
     <!-- Mobile view fallback -->
-    <div class="sm:hidden flex justify-between items-center mb-4">
-      <div class="font-bold text-lg">
+    <div class="sm:hidden flex justify-between items-center">
+      <div class="font-bold text-lg text-stone-700">
         {#if card.type === 'welcome'}
-          Welcome
+          Welcome & Search
         {:else if card.type === 'recent'}
           Recent Articles
         {/if}
       </div>
-      <button onclick={onToggleCollapse} class="p-1 text-stone-600 hover:bg-stone-100 rounded text-sm">Expand</button>
+      <button 
+        onclick={onToggleCollapse} 
+        class="px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 hover:text-indigo-800 transition-colors"
+      >
+        Expand
+      </button>
     </div>
   {:else}
     {#if (card.type === 'welcome' || card.type === 'recent') && onToggleCollapse}
+      <!-- Desktop collapse button -->
       <div class="hidden sm:flex justify-end mb-2">
         <button 
           onclick={onToggleCollapse}
@@ -179,6 +184,22 @@
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5M12 19.5l-7.5-7.5 7.5-7.5" />
           </svg>
+        </button>
+      </div>
+      <!-- Mobile collapse header -->
+      <div class="sm:hidden flex justify-between items-center mb-4 pb-2 border-b border-stone-100">
+        <div class="font-bold text-lg text-stone-700">
+          {#if card.type === 'welcome'}
+            Welcome & Search
+          {:else if card.type === 'recent'}
+            Recent Articles
+          {/if}
+        </div>
+        <button 
+          onclick={onToggleCollapse} 
+          class="px-2.5 py-1 text-xs font-semibold text-stone-600 bg-stone-50 border border-stone-200 rounded hover:bg-stone-100 transition-colors"
+        >
+          Collapse
         </button>
       </div>
     {/if}

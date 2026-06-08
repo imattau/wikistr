@@ -83,7 +83,7 @@
 </svelte:head>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="flex overflow-x-scroll pb-2" draggable="false" bind:this={slider}>
+<div class="flex flex-col sm:flex-row sm:overflow-x-scroll pb-2" draggable="false" bind:this={slider}>
   <CardElement 
     card={{ type: 'welcome', id: -1 }} 
     collapsed={$cards.length >= 1 && isWelcomeCollapsed}
