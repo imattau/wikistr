@@ -167,9 +167,12 @@
       </div>
       <button 
         onclick={onToggleCollapse} 
-        class="px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 hover:text-indigo-800 transition-colors"
+        class="p-1.5 text-indigo-600 hover:bg-indigo-50 border border-indigo-200 rounded transition-colors"
+        title={card.type === 'welcome' ? 'Expand welcome column' : 'Expand recent articles column'}
       >
-        Expand
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+        </svg>
       </button>
     </div>
   {:else}
@@ -197,9 +200,12 @@
         </div>
         <button 
           onclick={onToggleCollapse} 
-          class="px-2.5 py-1 text-xs font-semibold text-stone-600 bg-stone-50 border border-stone-200 rounded hover:bg-stone-100 transition-colors"
+          class="p-1.5 text-stone-600 hover:bg-stone-50 border border-stone-200 rounded transition-colors"
+          title={card.type === 'welcome' ? 'Collapse welcome column' : 'Collapse recent articles column'}
         >
-          Collapse
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+          </svg>
         </button>
       </div>
     {/if}
