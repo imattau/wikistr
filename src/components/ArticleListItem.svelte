@@ -28,7 +28,11 @@
   );
 
   function handleClick(ev: MouseEvent) {
-    openArticle(event, ev);
+    try {
+      openArticle(event, ev);
+    } catch (err) {
+      alert("Error opening article: " + err);
+    }
   }
 
   onMount(() => {

@@ -103,7 +103,7 @@
     const update = debounce(() => {
       // sort by exact matches first, then by authoritative score (WoT + reactions)
       let normalizedIdentifier = normalizeIdentifier(query);
-      results = results.sort((a, b) => {
+      results = [...results].sort((a, b) => {
         if (
           !isTagQuery &&
           getTagOr(a, 'd') === normalizedIdentifier &&
@@ -149,7 +149,7 @@
                     [targetA]: [...current, evt]
                   };
                   // Re-sort results inline
-                  results = results.sort((a, b) => {
+                  results = [...results].sort((a, b) => {
                     if (
                       !isTagQuery &&
                       getTagOr(a, 'd') === normalizedIdentifier &&
@@ -286,22 +286,26 @@
   const debouncedPerformSearch = debounce(performSearch, 400);
 
   function openArticle(result: Event, ev?: MouseEvent, direct?: boolean) {
-    let articleCard: ArticleCard = {
-      id: next(),
-      type: 'article',
-      data: [getTagOr(result, 'd'), result.pubkey],
-      relayHints: seenCache[result.id],
-      actualEvent: result,
-      versions:
-        getTagOr(result, 'd') === normalizeIdentifier(query)
-          ? results.filter((evt) => getTagOr(evt, 'd') === normalizeIdentifier(query))
-          : undefined
-    };
-    if (ev?.button === 1) createChild(articleCard);
-    else if (direct)
-      // if this is called with 'direct' we won't give it a back button
-      replaceSelf(articleCard);
-    else replaceSelf({ ...articleCard, back: card }); // otherwise we will
+    try {
+      let articleCard: ArticleCard = {
+        id: next(),
+        type: 'article',
+        data: [getTagOr(result, 'd'), result.pubkey],
+        relayHints: seenCache[result.id],
+        actualEvent: result,
+        versions:
+          getTagOr(result, 'd') === normalizeIdentifier(query)
+            ? results.filter((evt) => getTagOr(evt, 'd') === normalizeIdentifier(query))
+            : undefined
+      };
+      if (ev?.button === 1) createChild(articleCard);
+      else if (direct)
+        // if this is called with 'direct' we won't give it a back button
+        replaceSelf(articleCard);
+      else replaceSelf({ ...articleCard, back: card }); // otherwise we will
+    } catch (err) {
+      alert("Error in openArticle: " + err);
+    }
   }
 
   function startEditing() {
