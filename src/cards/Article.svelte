@@ -282,11 +282,17 @@
     }
   }
 
-  const articleCard = card as ArticleCard;
-  const dTag = articleCard.data[0];
-  const pubkey = articleCard.data[1];
+  let articleCard = $derived(card as ArticleCard);
+  let dTag = $derived(articleCard.data[0]);
+  let pubkey = $derived(articleCard.data[1]);
+  let author = $state<NostrUser>(bareNostrUser(''));
 
-  let author = $state<NostrUser>(bareNostrUser(pubkey));
+  $effect(() => {
+    author = bareNostrUser(pubkey);
+    loadNostrUser(pubkey).then((user) => {
+      author = user;
+    });
+  });
 
   let loadedRelays = $state<any>(null);
   let readRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.read).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
@@ -325,6 +331,10 @@
         previous: prevCard
       }
     } as any);
+  }
+
+  function selectOnMount(node: HTMLInputElement) {
+    node.focus();
   }
 
   function shareCopy() {
@@ -399,10 +409,6 @@
         }
       });
     }
-
-    loadNostrUser(pubkey).then((user) => {
-      author = user;
-    });
   });
 
   // Subscribe to the main article
@@ -750,7 +756,7 @@
                 bind:value={newPrivateTag} 
                 placeholder="private tag"
                 class="px-2 py-0.5 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-amber-500 focus:outline-none w-24"
-                autoFocus
+                use:selectOnMount
                 onblur={() => {
                   setTimeout(() => {
                     if (!newPrivateTag) showAddPrivateTag = false;
@@ -1029,13 +1035,13 @@
           <ul class="space-y-1.5 text-sm">
             {#each headings as heading}
               <li style:padding-left={`${(heading.level - minHeadingLevel) * 12}px`}>
-                <a
-                  href="javascript:void(0)"
+                <button
+                  type="button"
                   onclick={() => scrollToHeading(heading.title)}
-                  class="text-indigo-600 hover:text-indigo-850 hover:underline inline-block break-all"
+                  class="text-indigo-600 hover:text-indigo-850 hover:underline inline-block break-all text-left bg-transparent border-0 p-0 cursor-pointer font-normal"
                 >
                   {heading.title}
-                </a>
+                </button>
               </li>
             {/each}
           </ul>
@@ -1066,8 +1072,8 @@
             <ul class="mt-2 text-xs space-y-1 pl-5 list-disc text-indigo-600">
               {#each backlinks as link (link.id)}
                 <li>
-                  <a
-                    href="javascript:void(0)"
+                  <button
+                    type="button"
                     onclick={() => {
                       createChild({
                         id: next(),
@@ -1076,10 +1082,10 @@
                         actualEvent: link
                       } as ArticleCard);
                     }}
-                    class="hover:underline"
+                    class="hover:underline text-left bg-transparent border-0 p-0 cursor-pointer font-normal text-indigo-600 inline-block break-all"
                   >
                     {getTagOr(link, 'title') || getTagOr(link, 'd')}
-                  </a>
+                  </button>
                   <span class="text-stone-400">by <UserLabel pubkey={link.pubkey} {createChild} /></span>
                 </li>
               {/each}
