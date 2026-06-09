@@ -27,6 +27,7 @@
 
   let { replaceSelf, card }: Props = $props();
 
+  // svelte-ignore state_referenced_locally
   const editorCard = card as EditorCard;
 
   let data = $state<EditorData>({ ...editorCard.data });
@@ -393,10 +394,11 @@
     </details>
   </div>
   <div class="mt-4">
-    <label class="block text-sm font-semibold text-gray-700 mb-1">
+    <label for="categories-tags-input" class="block text-sm font-semibold text-gray-700 mb-1">
       Categories / Tags
     </label>
     <input
+      id="categories-tags-input"
       type="text"
       bind:value={tagsInput}
       placeholder="e.g. science, history, philosophy (comma-separated)"

@@ -16,7 +16,7 @@
   let { event, createChild }: Props = $props();
 
   let authorPreferredWikiAuthors = $state<string[]>([]);
-  const content = appendLinkMacroToNostrLinks(turnWikilinksIntoAsciidocLinks(event.content));
+  const content = $derived(appendLinkMacroToNostrLinks(turnWikilinksIntoAsciidocLinks(event.content)));
 
   onMount(() => {
     loadWikiAuthors(event.pubkey).then((ps) => {

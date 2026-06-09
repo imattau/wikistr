@@ -30,6 +30,7 @@
 
   let searchCard = $derived(card as SearchCard);
 
+  // svelte-ignore state_referenced_locally
   let query = $state((card as SearchCard).data);
   let seenCache: { [id: string]: string[] } = {};
   let results = $state<NostrEvent[]>([]);
