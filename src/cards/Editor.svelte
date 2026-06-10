@@ -141,8 +141,18 @@
   );
 
   async function publish() {
+    let userRelays: string[] = [];
+    try {
+      const rl = await loadRelayList($account!.pubkey);
+      if (rl && rl.items) {
+        userRelays = rl.items.filter((ri) => ri.write).map((ri) => ri.url);
+      }
+    } catch (e) {
+      console.warn("Failed to load user's relay list", e);
+    }
+
     targets = unique(
-      (await loadRelayList($account!.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url),
+      userRelays,
       DEFAULT_WIKI_RELAYS
     ).map((url) => ({ url, status: 'pending' }));
     error = undefined;
@@ -222,8 +232,18 @@
     const originalPubkey = data.previous.data[1];
     const originalDTag = data.previous.data[0];
 
+    let userRelays: string[] = [];
+    try {
+      const rl = await loadRelayList($account!.pubkey);
+      if (rl && rl.items) {
+        userRelays = rl.items.filter((ri) => ri.write).map((ri) => ri.url);
+      }
+    } catch (e) {
+      console.warn("Failed to load user's relay list", e);
+    }
+
     targets = unique(
-      (await loadRelayList($account!.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url),
+      userRelays,
       DEFAULT_WIKI_RELAYS
     ).map((url) => ({ url, status: 'pending' }));
     error = undefined;

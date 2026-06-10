@@ -108,6 +108,8 @@
         return npubEncode(card.data);
       case 'editor':
         return 'edit:' + (card as EditorCard).data.title;
+      case 'settings':
+        return 'settings';
     }
     return null;
   }

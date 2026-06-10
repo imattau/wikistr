@@ -66,7 +66,9 @@
 
   function cardFromPathPart(pathPart: string): Card {
     let ditem = decodeURIComponent(pathPart);
-    if (ditem.startsWith('edit:')) {
+    if (ditem === 'settings') {
+      return { id: next(), type: 'settings' };
+    } else if (ditem.startsWith('edit:')) {
       return {
         id: next(),
         type: 'editor',
