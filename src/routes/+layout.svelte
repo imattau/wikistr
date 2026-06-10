@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  import '../app.postcss';
+  import '../app.css';
   import { cards } from '$lib/state';
   import { isElementInViewport, getParentCard } from '$lib/utils';
   import CardElement from '$components/CardElement.svelte';
