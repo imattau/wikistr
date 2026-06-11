@@ -14,8 +14,9 @@
   import UserLabel from '$components/UserLabel.svelte';
   import ArticleContent from '$components/ArticleContent.svelte';
   import RelayItem from '$components/RelayItem.svelte';
-  import { diffLines } from '$lib/diff';
-  import { publishPrivateTagsToRelays } from '$lib/privateTagsSync';
+import { diffLines } from '$lib/diff';
+import { publishPrivateTagsToRelays } from '$lib/privateTagsSync';
+import { filterSecureRelays } from '$lib/security';
 
   interface Props {
     card: Card;
@@ -260,9 +261,11 @@
       };
 
       const signed = await signer.signEvent(commentTemplate);
-      const relays = unique(
-        (await loadRelayList($account!.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url),
-        seenOn
+      const relays = filterSecureRelays(
+        unique(
+          (await loadRelayList($account!.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url),
+          seenOn
+        )
       );
 
       await Promise.all(
@@ -298,8 +301,8 @@
   });
 
   let loadedRelays = $state<any>(null);
-  let readRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.read).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
-  let writeRelays = $derived(loadedRelays ? loadedRelays.items.filter((ri: any) => ri.write).map((ri: any) => ri.url).concat(articleCard.relayHints || []) : []);
+  let readRelays = $derived(loadedRelays ? filterSecureRelays(loadedRelays.items.filter((ri: any) => ri.read).map((ri: any) => ri.url).concat(articleCard.relayHints || [])) : []);
+  let writeRelays = $derived(loadedRelays ? filterSecureRelays(loadedRelays.items.filter((ri: any) => ri.write).map((ri: any) => ri.url).concat(articleCard.relayHints || [])) : []);
 
   let nOthers = $derived(historyEvents.length > 0 ? historyEvents.length : (articleCard.versions ? articleCard.versions.length : undefined));
 
@@ -400,7 +403,7 @@
 
     if (articleCard.actualEvent) {
       event = articleCard.actualEvent;
-      seenOn = articleCard.relayHints || [];
+      seenOn = filterSecureRelays(articleCard.relayHints || []);
 
       // Save actualEvent to local history cache
       idbkv.get(historyKey).then((localHistory) => {
@@ -620,9 +623,11 @@
     // help nostr stay by publishing articles from others into their write relays
     let to = setTimeout(async () => {
       if (event) {
-        (await loadRelayList(event.pubkey)).items
-          .filter((ri) => ri.write)
-          .map((ri) => ri.url)
+        filterSecureRelays(
+          (await loadRelayList(event.pubkey)).items
+            .filter((ri) => ri.write)
+            .map((ri) => ri.url)
+        )
           .slice(0, 3)
           .forEach(async (url) => {
             let relay = await pool.ensureRelay(url);
@@ -690,10 +695,12 @@
       created_at: Math.round(Date.now() / 1000)
     };
 
-    let inboxRelays = (await loadRelayList(pubkey)).items
-      .filter((ri) => ri.read)
-      .map((ri) => ri.url);
-    let relays = [...(card as ArticleCard).relayHints, ...inboxRelays, ...seenOn];
+    let inboxRelays = filterSecureRelays(
+      (await loadRelayList(pubkey)).items
+        .filter((ri) => ri.read)
+        .map((ri) => ri.url)
+    );
+    let relays = filterSecureRelays([...(card as ArticleCard).relayHints, ...inboxRelays, ...seenOn]);
 
     let like: NostrEvent;
     try {
@@ -994,7 +1001,7 @@
                       let signed = await signer.signEvent(eventTemplate);
                       let successes: string[] = [];
                       await Promise.all(
-                        seenOn.map(async (url) => {
+                        filterSecureRelays(seenOn).map(async (url) => {
                           try {
                             const r = await pool.ensureRelay(url);
                             await r.publish(signed);

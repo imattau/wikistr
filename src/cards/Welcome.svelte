@@ -2,10 +2,21 @@
   import {
     signer,
     account,
-    userWikiRelays
+    userWikiRelays,
+    completePasskeySession,
+    logout
   } from '$lib/nostr';
+  import {
+    hasStoredPasskeyIdentity,
+    registerPasskeyIdentity,
+    importPasskeyIdentityFromNsec,
+    unlockPasskeyIdentity,
+    clearPasskeyIdentity,
+    isPRFSupported
+  } from '$lib/passkeyIdentity';
   import type { ArticleCard, Card } from '$lib/types';
   import { next, urlWithoutScheme } from '$lib/utils';
+  import { safeImageUrl } from '$lib/security';
   import { onMount } from 'svelte';
   import New from './New.svelte';
   import { fetchPrivateTagsFromRelays } from '$lib/privateTagsSync';
@@ -79,11 +90,21 @@
     } as ArticleCard);
   }
 
+  let passkeySupported = $state(false);
+  let hasStoredPasskey = $state(false);
+  let showImportInput = $state(false);
+  let importNsecValue = $state('');
+
   onMount(() => {
     loadDashboardData();
     window.addEventListener('storage', loadDashboardData);
     window.addEventListener('wikistr:dashboard-update', loadDashboardData);
     
+    isPRFSupported().then((supported) => {
+      passkeySupported = supported;
+    });
+    hasStoredPasskey = hasStoredPasskeyIdentity();
+
     const unsubAccount = account.subscribe((acc) => {
       if (acc) {
         fetchPrivateTagsFromRelays(acc.pubkey);
@@ -101,30 +122,173 @@
     signer.getPublicKey();
   }
 
+  async function handlePasskeyRegister() {
+    try {
+      const { secretKey, pubkey } = await registerPasskeyIdentity();
+      await completePasskeySession(secretKey, pubkey);
+      hasStoredPasskey = hasStoredPasskeyIdentity();
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Passkey registration failed');
+    }
+  }
+
+  async function handlePasskeyUnlock() {
+    try {
+      const { secretKey, pubkey } = await unlockPasskeyIdentity();
+      await completePasskeySession(secretKey, pubkey);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Passkey unlock failed');
+    }
+  }
+
+  async function handlePasskeyImport() {
+    if (!importNsecValue) return;
+    try {
+      const { secretKey, pubkey } = await importPasskeyIdentityFromNsec(importNsecValue);
+      await completePasskeySession(secretKey, pubkey);
+      hasStoredPasskey = hasStoredPasskeyIdentity();
+      showImportInput = false;
+      importNsecValue = '';
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Passkey import failed');
+    }
+  }
+
+  function handlePasskeyClear() {
+    if (confirm('Are you sure you want to remove the passkey record from this browser? The private key will remain on the Nostr network, but you will no longer be able to unlock it on this device unless you import it again.')) {
+      clearPasskeyIdentity();
+      hasStoredPasskey = false;
+    }
+  }
+
+  async function handleLogout() {
+    await logout();
+  }
+
   function replaceNewCard(newCard: Card) {
     createChild(newCard);
   }
 </script>
 
-<div class="font-bold text-4xl">Account</div>
-<div class="mb-4 mt-2">
+<div class="font-bold text-3xl text-stone-850">Account</div>
+<div class="mb-6 mt-3">
   {#if $account}
-    <div class="flex h-12">
-      {#if $account.image}
-        <img class="full-h" src={$account.image} alt="user avatar" />
-      {/if}
-      <div class="ml-2">
-        <p class="w-64 text-ellipsis overflow-hidden">{$account.npub}</p>
-        <p>{$account.shortName}</p>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 bg-white border border-stone-200 rounded-xl shadow-sm">
+      <div class="flex items-center min-w-0">
+        {#if safeImageUrl($account.image)}
+          <img class="h-12 w-12 rounded-full object-cover border border-stone-200" src={safeImageUrl($account.image)!} alt="user avatar" />
+        {:else}
+          <div class="h-12 w-12 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold uppercase">
+            {$account.shortName?.slice(0, 2) || 'US'}
+          </div>
+        {/if}
+        <div class="ml-3 min-w-0">
+          <p class="font-semibold text-stone-900 leading-tight break-words">{$account.shortName || 'Nostr User'}</p>
+          <p class="text-xs text-stone-500 font-mono mt-1 truncate w-[calc(100vw-8rem)] sm:w-64">{$account.npub}</p>
+        </div>
       </div>
+      <button
+        onclick={handleLogout}
+        type="button"
+        class="inline-flex w-full sm:w-auto justify-center items-center px-3 py-1.5 border border-stone-200 hover:border-red-200 text-xs font-semibold rounded-lg bg-white hover:bg-red-50 text-stone-700 hover:text-red-700 transition-all focus:outline-none shadow-sm cursor-pointer"
+      >
+        Logout
+      </button>
     </div>
   {:else}
-    <button
-      onclick={doLogin}
-      type="submit"
-      class="inline-flex items-center space-x-2 px-3 py-2 border border-gray-300 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-white"
-      >Login</button
-    >
+    <div class="bg-stone-50/50 border border-stone-200 rounded-xl p-4 sm:p-5 shadow-sm">
+      <div class="flex flex-col gap-3">
+        <button
+          onclick={doLogin}
+          type="button"
+          class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-transparent text-sm font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow transition-all focus:outline-none cursor-pointer whitespace-normal text-center"
+        >
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+          </svg>
+          Connect Nostr Extension
+        </button>
+
+        {#if passkeySupported}
+          {#if hasStoredPasskey}
+            <button
+              onclick={handlePasskeyUnlock}
+              type="button"
+              class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-stone-300 rounded-lg bg-white hover:bg-stone-50 text-stone-700 font-medium shadow-sm transition-all focus:outline-none cursor-pointer whitespace-normal text-center"
+            >
+              <svg class="w-4 h-4 shrink-0 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v-2l2-2 1.257-1.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 1 1 0 000-2z" clip-rule="evenodd" />
+              </svg>
+              Unlock with Passkey
+            </button>
+          {:else}
+            <button
+              onclick={handlePasskeyRegister}
+              type="button"
+              class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-stone-300 rounded-lg bg-white hover:bg-stone-50 text-stone-700 font-medium shadow-sm transition-all focus:outline-none cursor-pointer whitespace-normal text-center"
+            >
+              <svg class="w-4 h-4 shrink-0 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              Sign up with Passkey
+            </button>
+          {/if}
+        {/if}
+      </div>
+
+      {#if passkeySupported}
+        <div class="mt-4 pt-4 border-t border-stone-200 flex flex-wrap items-center justify-between text-xs text-stone-500 gap-2">
+          {#if !hasStoredPasskey}
+            <button
+              onclick={() => showImportInput = !showImportInput}
+              class="text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none cursor-pointer"
+            >
+              Or import existing key (nsec) with Passkey
+            </button>
+          {:else}
+            <span class="text-stone-400">Passkey registered on this device</span>
+            <button
+              onclick={handlePasskeyClear}
+              class="text-red-600 hover:text-red-800 hover:underline focus:outline-none cursor-pointer"
+            >
+              Remove passkey from device
+            </button>
+          {/if}
+        </div>
+
+        {#if showImportInput && !hasStoredPasskey}
+          <form
+            onsubmit={(e) => { e.preventDefault(); handlePasskeyImport(); }}
+            class="mt-3 p-3 bg-white border border-stone-200 rounded-lg shadow-inner"
+          >
+            <label class="block text-xs font-semibold text-stone-600 mb-1" for="nsec-input">
+              Nostr Secret Key (nsec1... or 64-char hex)
+            </label>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input
+                id="nsec-input"
+                type="password"
+                bind:value={importNsecValue}
+                placeholder="nsec1..."
+                class="w-full flex-1 px-3 py-1.5 border border-stone-300 rounded-lg text-sm font-mono focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none min-w-0"
+              />
+              <button
+                type="submit"
+                class="w-full sm:w-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-all cursor-pointer"
+              >
+                Import
+              </button>
+            </div>
+            <p class="mt-1 text-[10px] text-stone-400">
+              The key will be encrypted and stored locally. It never leaves your browser.
+            </p>
+          </form>
+        {/if}
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -258,4 +422,3 @@
     </div>
   {/if}
 </div>
-

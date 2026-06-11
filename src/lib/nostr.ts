@@ -2,8 +2,43 @@ import { derived, readable } from 'svelte/store';
 import * as idbkv from 'idb-keyval';
 
 import type { EventTemplate, Event } from '@nostr/tools/pure';
+import type { PasskeySignerShim } from './passkeyIdentity';
+import { buildPasskeySignerShim, hexToBytes, bytesToHex, isPasskeyShim } from './passkeyIdentity';
+
+let passkeySignerShim: PasskeySignerShim | null = null;
+let restoredPasskeyPubkey: string | null = null;
+
+function getActiveSigner(): PasskeySignerShim | null {
+  if (passkeySignerShim) {
+    return passkeySignerShim;
+  }
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const nostr = (window as any).nostr;
+  return nostr && typeof nostr.getPublicKey === 'function' && typeof nostr.signEvent === 'function'
+    ? (nostr as PasskeySignerShim)
+    : null;
+}
+
+if (typeof window !== 'undefined') {
+  const sessionNsec = sessionStorage.getItem('wikistr:passkey_session_nsec');
+  if (sessionNsec) {
+    try {
+      const secretKey = hexToBytes(sessionNsec);
+      passkeySignerShim = buildPasskeySignerShim(secretKey);
+      (window as any).nostr = passkeySignerShim;
+      restoredPasskeyPubkey = sessionStorage.getItem('wikistr:passkey_session_pubkey');
+    } catch (e) {
+      sessionStorage.removeItem('wikistr:passkey_session_nsec');
+      sessionStorage.removeItem('wikistr:passkey_session_pubkey');
+      console.error('Failed to restore passkey session', e);
+    }
+  }
+}
 import { DEFAULT_WIKI_RELAYS } from './defaults';
 import { unique } from './utils';
+import { filterSecureRelays } from './security';
 import {
   loadFollowsList,
   loadRelayList,
@@ -21,24 +56,36 @@ export const gitPatchKind = 1617;
 
 export const signer = {
   getPublicKey: async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pubkey = await (window as any).nostr.getPublicKey();
+    const nostr = getActiveSigner();
+    if (!nostr) {
+      throw new Error('No Nostr signer is available.')
+    }
+    const pubkey = await nostr.getPublicKey();
     setAccount(pubkey);
     return pubkey;
   },
   signEvent: async (event: EventTemplate): Promise<Event> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const se: Event = await (window as any).nostr.signEvent(event);
+    const nostr = getActiveSigner();
+    if (!nostr) {
+      throw new Error('No Nostr signer is available.')
+    }
+    const se: Event = await nostr.signEvent(event);
     setAccount(se.pubkey);
     return se;
   },
   encrypt: async (pubkey: string, plaintext: string): Promise<string> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return await (window as any).nostr.nip04.encrypt(pubkey, plaintext);
+    const nostr = getActiveSigner();
+    if (!nostr) {
+      throw new Error('No Nostr signer is available.')
+    }
+    return await nostr.nip04.encrypt(pubkey, plaintext);
   },
   decrypt: async (pubkey: string, ciphertext: string): Promise<string> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return await (window as any).nostr.nip04.decrypt(pubkey, ciphertext);
+    const nostr = getActiveSigner();
+    if (!nostr) {
+      throw new Error('No Nostr signer is available.')
+    }
+    return await nostr.nip04.decrypt(pubkey, ciphertext);
   }
 };
 
@@ -79,13 +126,24 @@ export const wot = readable<{ [pubkey: string]: number }>({}, (set) => {
   };
 });
 
-let setAccount: (_: string) => Promise<void>;
+let setAccount: (_: string | null) => Promise<void>;
 export const account = readable<NostrUser | null>(null, (set) => {
-  setAccount = async (pubkey: string) => {
+  setAccount = async (pubkey: string | null) => {
+    if (!pubkey) {
+      await idbkv.del('wikistr:loggedin');
+      set(null);
+      return;
+    }
     const account = await loadNostrUser(pubkey);
     idbkv.set('wikistr:loggedin', account);
     set(account);
   };
+
+  if (restoredPasskeyPubkey) {
+    setAccount(restoredPasskeyPubkey);
+    restoredPasskeyPubkey = null;
+    return;
+  }
 
   // try to load account from local storage on startup
   setTimeout(async () => {
@@ -93,6 +151,26 @@ export const account = readable<NostrUser | null>(null, (set) => {
     if (data) set(data);
   }, 700);
 });
+
+export async function completePasskeySession(secretKey: Uint8Array, pubkey: string): Promise<void> {
+  sessionStorage.setItem('wikistr:passkey_session_nsec', bytesToHex(secretKey));
+  sessionStorage.setItem('wikistr:passkey_session_pubkey', pubkey);
+  passkeySignerShim = buildPasskeySignerShim(secretKey);
+  (window as any).nostr = passkeySignerShim;
+  await setAccount(pubkey);
+}
+
+export async function logout(): Promise<void> {
+  sessionStorage.removeItem('wikistr:passkey_session_nsec');
+  sessionStorage.removeItem('wikistr:passkey_session_pubkey');
+  passkeySignerShim = null;
+  if (typeof window !== 'undefined') {
+    if (isPasskeyShim((window as any).nostr)) {
+      delete (window as any).nostr;
+    }
+  }
+  await setAccount(null);
+}
 
 const unsub = account.subscribe((account) => {
   if (account) {
@@ -140,7 +218,7 @@ export async function getBasicUserWikiRelays(pubkey: string): Promise<string[]> 
   }
 
   const [rl1, rl2, rl3] = await Promise.all([
-    loadWikiRelays(pubkey).then((rl) => rl.items).catch(() => []),
+    loadWikiRelays(pubkey).then((rl) => filterSecureRelays(rl.items)).catch(() => []),
     Promise.all((await loadWikiAuthors(pubkey).catch(() => ({ items: [] }))).items.map((pk) => loadRelayList(pk).catch(() => null))).then((rll) =>
       rll
         .filter((rl): rl is Exclude<typeof rl, null> => rl !== null)
@@ -148,9 +226,10 @@ export async function getBasicUserWikiRelays(pubkey: string): Promise<string[]> 
         .flat()
         .filter((ri) => ri.write)
         .map((ri) => ri.url)
+        .filter((url) => filterSecureRelays([url]).length > 0)
     ).catch(() => []),
     loadRelayList(pubkey).then((rl) =>
-      rl.items.filter((ri) => ri.write).map((ri) => ri.url)
+      filterSecureRelays(rl.items.filter((ri) => ri.write).map((ri) => ri.url))
     ).catch(() => [])
   ]);
 

@@ -6,6 +6,7 @@
 
   import type { ArticleCard, RelayCard, Card } from '$lib/types';
   import { addUniqueTaggedReplaceable, getTagOr, next, urlWithoutScheme } from '$lib/utils';
+  import { isSecureRelayUrl, isSecurePage } from '$lib/security';
   import { wikiKind } from '$lib/nostr';
   import ArticleListItem from '$components/ArticleListItem.svelte';
 
@@ -20,6 +21,11 @@
   let tried = $state(false);
 
   onMount(() => {
+    if (!isSecureRelayUrl(card.data)) {
+      tried = true;
+      return;
+    }
+
     const update = debounce(() => {
       results = results;
     }, 500);
@@ -64,6 +70,11 @@
 </script>
 
 <div class="mb-0 text-2xl break-all">{urlWithoutScheme(card.data)}</div>
+{#if isSecurePage() && !isSecureRelayUrl(card.data)}
+  <div class="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg mt-2 text-sm text-amber-800">
+    This relay uses `ws://` and cannot be opened from a secure page without mixed content.
+  </div>
+{/if}
 {#each results as result (result.id)}
   <ArticleListItem event={result} {openArticle} />
 {/each}

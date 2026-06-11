@@ -4,6 +4,7 @@
 
   import type { Card, UserCard } from '$lib/types';
   import { next } from '$lib/utils';
+  import { safeImageUrl } from '$lib/security';
 
   let user = $state<NostrUser | null>(null);
 
@@ -31,8 +32,8 @@
   class:cursor-pointer={!!createChild}
   onclick={handleClick}
 >
-  {#if user?.image}
-    <img src={user.image} class="h-full ml-1" alt="user avatar" />&nbsp;
+  {#if safeImageUrl(user?.image)}
+    <img src={safeImageUrl(user?.image)!} class="h-full ml-1" alt="user avatar" />&nbsp;
   {/if}
   <span class="text-gray-600 font-[600] text-ellipsis truncate" title={user?.npub}
     >{user?.shortName || pubkey}</span

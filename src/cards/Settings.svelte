@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
+  import { isSecurePage, isSecureRelayUrl } from '$lib/security';
 
   let customRelays = $state<string[]>([]);
   let newRelay = $state('');
@@ -21,6 +22,10 @@
     if (!url) return;
     if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
       alert('Relay URL must start with wss:// or ws://');
+      return;
+    }
+    if (!isSecureRelayUrl(url)) {
+      alert('ws:// relays are blocked on secure pages. Use wss:// instead.');
       return;
     }
     if (customRelays.includes(url)) {
@@ -104,6 +109,11 @@
         </span>
       {/each}
     </div>
+    {#if isSecurePage()}
+      <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+        Secure pages block `ws://` relays because they trigger mixed content in the browser.
+      </p>
+    {/if}
   </div>
 
   <!-- Save actions -->

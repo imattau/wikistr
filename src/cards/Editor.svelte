@@ -15,6 +15,7 @@
     unique,
     urlWithoutScheme
   } from '$lib/utils';
+  import { filterSecureRelays } from '$lib/security';
   import { pool } from '@nostr/gadgets/global';
   import { loadRelayList } from '@nostr/gadgets/lists';
   import { normalizeIdentifier } from '@nostr/tools/nip54';
@@ -65,9 +66,11 @@
     }
     lookupSearching = true;
 
-    const searchRelays = unique(
-      (await loadRelayList($account?.pubkey || '')).items.filter((ri) => ri.read).map((ri) => ri.url),
-      DEFAULT_WIKI_RELAYS
+    const searchRelays = filterSecureRelays(
+      unique(
+        (await loadRelayList($account?.pubkey || '')).items.filter((ri) => ri.read).map((ri) => ri.url),
+        DEFAULT_WIKI_RELAYS
+      )
     );
 
     lookupSub = pool.subscribeMany(
@@ -145,7 +148,7 @@
     try {
       const rl = await loadRelayList($account!.pubkey);
       if (rl && rl.items) {
-        userRelays = rl.items.filter((ri) => ri.write).map((ri) => ri.url);
+        userRelays = filterSecureRelays(rl.items.filter((ri) => ri.write).map((ri) => ri.url));
       }
     } catch (e) {
       console.warn("Failed to load user's relay list", e);
@@ -236,7 +239,7 @@
     try {
       const rl = await loadRelayList($account!.pubkey);
       if (rl && rl.items) {
-        userRelays = rl.items.filter((ri) => ri.write).map((ri) => ri.url);
+        userRelays = filterSecureRelays(rl.items.filter((ri) => ri.write).map((ri) => ri.url));
       }
     } catch (e) {
       console.warn("Failed to load user's relay list", e);

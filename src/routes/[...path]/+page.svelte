@@ -6,6 +6,7 @@
   import { page } from '$app/state';
   import { cards } from '$lib/state';
   import { next, scrollCardIntoView } from '$lib/utils';
+  import { isSecurePage } from '$lib/security';
   import type { ArticleCard, Card, EditorCard, RelayCard, SearchCard, UserCard } from '$lib/types';
 
   onMount(() => {
@@ -79,7 +80,7 @@
     } else if (
       ditem.split('.').length >= 2 ||
       ditem.startsWith('wss://') ||
-      ditem.startsWith('ws://')
+      (ditem.startsWith('ws://') && !isSecurePage())
     ) {
       return { id: next(), type: 'relay', data: normalizeURL(ditem) } as RelayCard;
     } else if (pathPart.match(/^[\w-]+\*[a-f0-9]{64}$/)) {

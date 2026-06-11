@@ -15,7 +15,8 @@
   import ArticleListItem from '$components/ArticleListItem.svelte';
   import { replaceState } from '$app/navigation';
   import { page } from '$app/state';
-  import { cards } from '$lib/state';
+import { cards } from '$lib/state';
+import { filterSecureRelays } from '$lib/security';
 
   interface Props {
     card: Card;
@@ -129,7 +130,7 @@
       }
       if (results.length > 0) {
         const coordinates = results.map(r => `${wikiKind}:${r.pubkey}:${getTagOr(r, 'd')}`);
-        const queryRelays = unique($userWikiRelays, DEFAULT_SEARCH_RELAYS);
+        const queryRelays = filterSecureRelays(unique($userWikiRelays, DEFAULT_SEARCH_RELAYS));
         reactionSub = pool.subscribeMany(
           queryRelays,
           [
@@ -203,14 +204,15 @@
         }
       }
 
-      if (relaysToUseNow.length === 0) return;
+      const safeRelays = filterSecureRelays(relaysToUseNow);
+      if (safeRelays.length === 0) return;
 
       const exactFilter = isTagQuery
         ? { kinds: [wikiKind], '#t': [tagTerm], limit: 25 }
         : { kinds: [wikiKind], '#d': [normalizeIdentifier(query)], limit: 25 };
 
       let subc = pool.subscribeMany(
-        relaysToUseNow,
+        safeRelays,
         [exactFilter],
         {
           id: 'find-exactmatch',
