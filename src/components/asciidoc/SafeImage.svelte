@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type Block } from '@asciidoctor/core';
 
-  import { safeMediaUrl } from '$lib/security';
+  import { safeMediaUrl, safeLinkUrl } from '$lib/security';
 
   export interface Props {
     node: Block;
@@ -9,6 +9,7 @@
 
   let { node }: Props = $props();
   let src = $derived.by(() => safeMediaUrl(node.getImageUri(node.getAttribute('target'))));
+  let link = $derived.by(() => safeLinkUrl(node.getAttribute('link')));
 </script>
 
 {#if src}
@@ -18,8 +19,8 @@
     } ${node.hasAttribute('float') ? node.getAttribute('float') : ''}`}
   >
     <div class="content">
-      {#if node.hasAttribute('link')}
-        <a class="image" href={node.getAttribute('link')}>
+      {#if link}
+        <a class="image" href={link} rel="noopener noreferrer">
           <img
             src={src}
             alt={node.getAttribute('alt')}

@@ -49,3 +49,26 @@ export function safeImageUrl(url: string | null | undefined): string | null {
 export function safeMediaUrl(url: string | null | undefined): string | null {
   return safeImageUrl(url)
 }
+
+export function safeLinkUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed, typeof window !== 'undefined' ? window.location.href : undefined)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return null
+  }
+
+  if (isSecurePage() && parsed.protocol !== 'https:') {
+    return null
+  }
+
+  return trimmed
+}
