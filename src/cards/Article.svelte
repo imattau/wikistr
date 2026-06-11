@@ -14,9 +14,21 @@
   import UserLabel from '$components/UserLabel.svelte';
   import ArticleContent from '$components/ArticleContent.svelte';
   import RelayItem from '$components/RelayItem.svelte';
-import { diffLines } from '$lib/diff';
-import { publishPrivateTagsToRelays } from '$lib/privateTagsSync';
-import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
+  import { diffLines } from '$lib/diff';
+  import {
+    getPrivateTagsForArticle,
+    publishPrivateTagsToRelays,
+    setPrivateTagsForArticle
+  } from '$lib/privateTagsSync';
+  import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
+  import {
+    getPinnedDashboardItems,
+    getRecentDashboardItems,
+    publishPinnedDashboardList,
+    publishRecentDashboardList,
+    setPinnedDashboardItems,
+    setRecentDashboardItems
+  } from '$lib/dashboardListsSync';
 
   interface Props {
     card: Card;
@@ -37,44 +49,37 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
 
   let copied = $state(false);
   let isPinned = $state(false);
+  let lastHistoryEventId = $state<string | null>(null);
 
-  $effect(() => {
-    if (event) {
-      untrack(() => {
-        try {
-          const stored = localStorage.getItem('wikistr:pinned');
-          const pinned = stored ? JSON.parse(stored) : [];
-          if (Array.isArray(pinned)) {
-            isPinned = pinned.some((x: any) => x.dTag === dTag && x.pubkey === pubkey);
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      });
+  function loadPinnedState() {
+    try {
+      isPinned = getPinnedDashboardItems().some((x) => x.dTag === dTag && x.pubkey === pubkey);
+    } catch (e) {
+      console.error(e);
     }
-  });
+  }
 
   $effect(() => {
-    if (event) {
+    if (event && event.id !== lastHistoryEventId) {
+      lastHistoryEventId = event.id;
       untrack(() => {
         try {
-          const stored = localStorage.getItem('wikistr:history');
-          let history = stored ? JSON.parse(stored) : [];
-          if (!Array.isArray(history)) history = [];
-          
+          const history = getRecentDashboardItems();
+
           const historyItem = {
             dTag,
             pubkey,
             title: title || dTag,
             timestamp: Date.now()
           };
-          
-          history = history.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
-          history.unshift(historyItem);
-          history = history.slice(0, 5);
-          
-          localStorage.setItem('wikistr:history', JSON.stringify(history));
+
+          const nextHistory = history.filter((x) => !(x.dTag === dTag && x.pubkey === pubkey));
+          nextHistory.unshift(historyItem);
+          setRecentDashboardItems(nextHistory.slice(0, 5));
           window.dispatchEvent(new Event('wikistr:dashboard-update'));
+          if ($account?.pubkey) {
+            void publishRecentDashboardList($account.pubkey);
+          }
         } catch (e) {
           console.error('Failed to update history', e);
         }
@@ -82,22 +87,26 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
     }
   });
 
+  $effect(() => {
+    if (event) {
+      loadPinnedState();
+    }
+  });
+
   function togglePin() {
     isPinned = !isPinned;
     try {
-      const stored = localStorage.getItem('wikistr:pinned');
-      let pinned = stored ? JSON.parse(stored) : [];
-      if (!Array.isArray(pinned)) pinned = [];
-      
+      const pinned = getPinnedDashboardItems().filter((x) => !(x.dTag === dTag && x.pubkey === pubkey));
+
       if (isPinned) {
-        if (!pinned.some((x: any) => x.dTag === dTag && x.pubkey === pubkey)) {
-          pinned.push({ dTag, pubkey, title: title || dTag });
-        }
-      } else {
-        pinned = pinned.filter((x: any) => !(x.dTag === dTag && x.pubkey === pubkey));
+        pinned.unshift({ dTag, pubkey, title: title || dTag });
       }
-      localStorage.setItem('wikistr:pinned', JSON.stringify(pinned));
+      setPinnedDashboardItems(pinned);
+
       window.dispatchEvent(new Event('wikistr:dashboard-update'));
+      if ($account?.pubkey) {
+        void publishPinnedDashboardList($account.pubkey);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -114,10 +123,7 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
 
   function loadPrivateTags() {
     try {
-      const stored = localStorage.getItem('wikistr:private-tags');
-      const allPrivateTags = stored ? JSON.parse(stored) : {};
-      const key = `${pubkey}:${dTag}`;
-      privateTags = allPrivateTags[key] || [];
+      privateTags = getPrivateTagsForArticle(pubkey, dTag);
     } catch (e) {
       console.error(e);
     }
@@ -127,14 +133,10 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
     const cleanTag = tag.trim().toLowerCase();
     if (!cleanTag) return;
     try {
-      const stored = localStorage.getItem('wikistr:private-tags');
-      const allPrivateTags = stored ? JSON.parse(stored) : {};
-      const key = `${pubkey}:${dTag}`;
-      const existing = allPrivateTags[key] || [];
+      const existing = getPrivateTagsForArticle(pubkey, dTag);
       if (!existing.includes(cleanTag)) {
         existing.push(cleanTag);
-        allPrivateTags[key] = existing;
-        localStorage.setItem('wikistr:private-tags', JSON.stringify(allPrivateTags));
+        setPrivateTagsForArticle(pubkey, dTag, existing);
         privateTags = existing;
         window.dispatchEvent(new Event('wikistr:dashboard-update'));
         if ($account) {
@@ -148,13 +150,9 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
 
   function removePrivateTag(tag: string) {
     try {
-      const stored = localStorage.getItem('wikistr:private-tags');
-      const allPrivateTags = stored ? JSON.parse(stored) : {};
-      const key = `${pubkey}:${dTag}`;
-      let existing = allPrivateTags[key] || [];
+      let existing = getPrivateTagsForArticle(pubkey, dTag);
       existing = existing.filter((t: string) => t !== tag);
-      allPrivateTags[key] = existing;
-      localStorage.setItem('wikistr:private-tags', JSON.stringify(allPrivateTags));
+      setPrivateTagsForArticle(pubkey, dTag, existing);
       privateTags = existing;
       window.dispatchEvent(new Event('wikistr:dashboard-update'));
       if ($account) {
@@ -382,6 +380,10 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
   }
 
   onMount(() => {
+    loadPinnedState();
+    window.addEventListener('storage', loadPinnedState);
+    window.addEventListener('wikistr:dashboard-update', loadPinnedState);
+
     loadPrivateTags();
     
     // Fetch relay list once and store it
@@ -415,6 +417,11 @@ import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
         }
       });
     }
+
+    return () => {
+      window.removeEventListener('storage', loadPinnedState);
+      window.removeEventListener('wikistr:dashboard-update', loadPinnedState);
+    };
   });
 
   // Subscribe to the main article

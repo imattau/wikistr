@@ -19,7 +19,15 @@
   import { safeImageUrl } from '$lib/security';
   import { onMount } from 'svelte';
   import New from './New.svelte';
-  import { fetchPrivateTagsFromRelays } from '$lib/privateTagsSync';
+  import {
+    fetchPrivateTagsFromRelays,
+    getPrivateTagsMap
+  } from '$lib/privateTagsSync';
+  import {
+    getPinnedDashboardItems,
+    getRecentDashboardItems,
+    syncDashboardListsFromRelays
+  } from '$lib/dashboardListsSync';
 
   interface Props {
     createChild: (card: Card) => void;
@@ -35,14 +43,9 @@
 
   function loadPrivateTagsMap() {
     try {
-      const stored = localStorage.getItem('wikistr:private-tags');
-      const allPrivateTags = stored ? JSON.parse(stored) : {};
-      
-      const storedPinned = localStorage.getItem('wikistr:pinned');
-      const pinned = storedPinned ? JSON.parse(storedPinned) : [];
-      const storedHistory = localStorage.getItem('wikistr:history');
-      const history = storedHistory ? JSON.parse(storedHistory) : [];
-      const allItems = [...pinned, ...history];
+      const allPrivateTags = getPrivateTagsMap();
+
+      const allItems = [...getPinnedDashboardItems(), ...getRecentDashboardItems()];
       
       const map: typeof privateTagsMap = {};
       
@@ -67,13 +70,8 @@
 
   function loadDashboardData() {
     try {
-      const storedPinned = localStorage.getItem('wikistr:pinned');
-      pinnedList = storedPinned ? JSON.parse(storedPinned) : [];
-      if (!Array.isArray(pinnedList)) pinnedList = [];
-
-      const storedHistory = localStorage.getItem('wikistr:history');
-      historyList = storedHistory ? JSON.parse(storedHistory) : [];
-      if (!Array.isArray(historyList)) historyList = [];
+      pinnedList = getPinnedDashboardItems();
+      historyList = getRecentDashboardItems();
 
       loadPrivateTagsMap();
     } catch (e) {
@@ -107,7 +105,8 @@
 
     const unsubAccount = account.subscribe((acc) => {
       if (acc) {
-        fetchPrivateTagsFromRelays(acc.pubkey);
+        void syncDashboardListsFromRelays(acc.pubkey);
+        void fetchPrivateTagsFromRelays(acc.pubkey);
       }
     });
 

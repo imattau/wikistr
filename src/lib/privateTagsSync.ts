@@ -1,74 +1,114 @@
-import type { Event, EventTemplate } from '@nostr/tools/pure';
-import { pool } from '@nostr/gadgets/global';
-import { signer, wikiKind, getBasicUserWikiRelays } from './nostr';
+import {
+  fetchLatestEncryptedEvent,
+  publishEncryptedEvent,
+  readVersionedStore,
+  writeVersionedStore
+} from './encryptedNostrStore';
+import { signer, wikiKind } from './nostr';
+
+type PrivateTagsMap = { [key: string]: string[] };
+type PrivateTagsEntry = { key: string; tags: string[] };
+
+const STORAGE_KEY = 'wikistr:private-tags';
+const PRIVATE_TAGS_DTAG = 'wikistr-private-tags';
+const PRIVATE_TAGS_KIND = 30003;
+
+function normalizeMap(map: PrivateTagsMap): PrivateTagsMap {
+  const normalized: PrivateTagsMap = {};
+  Object.entries(map).forEach(([key, list]) => {
+    if (!Array.isArray(list)) return;
+    const cleaned = [...new Set(list.filter((tag) => typeof tag === 'string' && tag.trim()))].sort();
+    if (cleaned.length > 0) {
+      normalized[key] = cleaned;
+    }
+  });
+  return normalized;
+}
+
+function storeToMap(items: PrivateTagsEntry[]): PrivateTagsMap {
+  const map: PrivateTagsMap = {};
+  items.forEach((item) => {
+    if (!item || typeof item.key !== 'string' || !Array.isArray(item.tags)) return;
+    map[item.key] = [...new Set(item.tags.filter((tag) => typeof tag === 'string' && tag.trim()))];
+  });
+  return normalizeMap(map);
+}
+
+function parseLegacyEntries(value: unknown): PrivateTagsEntry[] {
+  const map: PrivateTagsMap = {};
+
+  if (Array.isArray(value)) {
+    value.forEach((tagArray) => {
+      if (!Array.isArray(tagArray) || tagArray[0] !== 'a') return;
+      const coord = tagArray[1];
+      const label = tagArray[3];
+      if (typeof coord !== 'string' || typeof label !== 'string' || !coord.startsWith(`${wikiKind}:`)) return;
+      const key = coord.substring(`${wikiKind}:`.length);
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(label)) map[key].push(label);
+    });
+  } else if (value && typeof value === 'object') {
+    Object.entries(value as Record<string, unknown>).forEach(([key, tags]) => {
+      if (!Array.isArray(tags)) return;
+      map[key] = tags.filter((tag): tag is string => typeof tag === 'string');
+    });
+  }
+
+  return Object.entries(normalizeMap(map)).map(([key, tags]) => ({ key, tags }));
+}
+
+function readStoredMap(): PrivateTagsMap {
+  const store = readVersionedStore<PrivateTagsEntry>(STORAGE_KEY, [], parseLegacyEntries).items;
+  return storeToMap(store);
+}
+
+function writeStoredMap(map: PrivateTagsMap): void {
+  writeVersionedStore<PrivateTagsEntry>(
+    STORAGE_KEY,
+    Object.entries(normalizeMap(map)).map(([key, tags]) => ({ key, tags }))
+  );
+}
+
+function decryptAndParsePrivateTags(content: string): PrivateTagsMap {
+  const parsed = JSON.parse(content);
+  if (Array.isArray(parsed)) {
+    return storeToMap(parseLegacyEntries(parsed));
+  }
+  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { items?: unknown }).items)) {
+    return storeToMap((parsed as { items: PrivateTagsEntry[] }).items);
+  }
+  return storeToMap(parseLegacyEntries(parsed));
+}
+
+export function getPrivateTagsMap(): PrivateTagsMap {
+  return readStoredMap();
+}
+
+export function getPrivateTagsForArticle(pubkey: string, dTag: string): string[] {
+  return getPrivateTagsMap()[`${pubkey}:${dTag}`] || [];
+}
+
+export function setPrivateTagsForArticle(pubkey: string, dTag: string, tags: string[]): void {
+  const key = `${pubkey}:${dTag}`;
+  const map = getPrivateTagsMap();
+  const nextTags = [...new Set(tags.filter((tag) => typeof tag === 'string' && tag.trim().length > 0))].sort();
+  if (nextTags.length > 0) {
+    map[key] = nextTags;
+  } else {
+    delete map[key];
+  }
+  writeStoredMap(map);
+}
 
 export async function fetchPrivateTagsFromRelays(pubkey: string): Promise<void> {
   try {
-    const relays = await getBasicUserWikiRelays(pubkey);
-    let latestEvent: Event | null = null;
+    const latestEvent = await fetchLatestEncryptedEvent(pubkey, PRIVATE_TAGS_KIND, [PRIVATE_TAGS_DTAG]);
+    if (!latestEvent?.content) return;
 
-    await new Promise<void>((resolve) => {
-      const sub = pool.subscribeMany(
-        relays,
-        [
-          {
-            kinds: [30003],
-            authors: [pubkey],
-            '#d': ['wikistr-private-tags']
-          }
-        ],
-        {
-          id: 'fetch-private-tags',
-          onevent(evt) {
-            if (!latestEvent || evt.created_at > latestEvent.created_at) {
-              latestEvent = evt;
-            }
-          },
-          oneose() {
-            sub.close();
-            resolve();
-          }
-        }
-      );
-      // Timeout fallback in case relays are unresponsive
-      setTimeout(() => {
-        sub.close();
-        resolve();
-      }, 3500);
-    });
-
-    if (latestEvent) {
-      const ciphertext = (latestEvent as Event).content;
-      if (!ciphertext) return;
-
-      const plaintext = await signer.decrypt(pubkey, ciphertext);
-      const parsed = JSON.parse(plaintext);
-      
-      if (Array.isArray(parsed)) {
-        const privateTagsMap: { [key: string]: string[] } = {};
-        
-        parsed.forEach((tagArray) => {
-          if (Array.isArray(tagArray) && tagArray[0] === 'a') {
-            const coord = tagArray[1]; // e.g. "30818:pubkey:dtag"
-            const label = tagArray[3]; // tag name
-            
-            if (coord && label && coord.startsWith(`${wikiKind}:`)) {
-              // Strip "30818:" prefix to get "pubkey:dtag"
-              const key = coord.substring(`${wikiKind}:`.length);
-              if (!privateTagsMap[key]) {
-                privateTagsMap[key] = [];
-              }
-              if (!privateTagsMap[key].includes(label)) {
-                privateTagsMap[key].push(label);
-              }
-            }
-          }
-        });
-        
-        localStorage.setItem('wikistr:private-tags', JSON.stringify(privateTagsMap));
-        window.dispatchEvent(new Event('wikistr:dashboard-update'));
-      }
-    }
+    const plaintext = await signer.decrypt(pubkey, latestEvent.content);
+    const nextMap = decryptAndParsePrivateTags(plaintext);
+    writeStoredMap(nextMap);
+    window.dispatchEvent(new Event('wikistr:dashboard-update'));
   } catch (e) {
     console.error('Failed to sync private tags from relays', e);
   }
@@ -76,41 +116,8 @@ export async function fetchPrivateTagsFromRelays(pubkey: string): Promise<void> 
 
 export async function publishPrivateTagsToRelays(pubkey: string): Promise<void> {
   try {
-    const stored = localStorage.getItem('wikistr:private-tags');
-    const allPrivateTags = stored ? JSON.parse(stored) : {};
-    
-    const bookmarksArray: string[][] = [];
-    Object.entries(allPrivateTags).forEach(([key, list]) => {
-      if (Array.isArray(list)) {
-        list.forEach((tag) => {
-          bookmarksArray.push(['a', `${wikiKind}:${key}`, '', tag]);
-        });
-      }
-    });
-
-    const encryptedContent = await signer.encrypt(pubkey, JSON.stringify(bookmarksArray));
-    const relays = await getBasicUserWikiRelays(pubkey);
-
-    const eventTemplate: EventTemplate = {
-      kind: 30003,
-      tags: [['d', 'wikistr-private-tags']],
-      content: encryptedContent,
-      created_at: Math.round(Date.now() / 1000)
-    };
-
-    const signedEvent = await signer.signEvent(eventTemplate);
-    
-    // Publish to all write relays
-    await Promise.all(
-      relays.map(async (url) => {
-        try {
-          const r = await pool.ensureRelay(url);
-          await r.publish(signedEvent);
-        } catch (err) {
-          console.error(`Failed to publish private tags to relay ${url}`, err);
-        }
-      })
-    );
+    const store = readVersionedStore<PrivateTagsEntry>(STORAGE_KEY, [], parseLegacyEntries);
+    await publishEncryptedEvent(pubkey, PRIVATE_TAGS_KIND, PRIVATE_TAGS_DTAG, JSON.stringify(store));
   } catch (e) {
     console.error('Failed to publish private tags to relays', e);
   }
