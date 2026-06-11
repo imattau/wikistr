@@ -32,6 +32,12 @@
   });
 
   onMount(() => {
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('/sw.js').catch((error) => {
+        console.error('Failed to register service worker', error);
+      });
+    }
+
     document.addEventListener('mousedown', onMouseDown);
     document.addEventListener('mouseup', onMouseUp);
     document.addEventListener('mousemove', onMouseMove);

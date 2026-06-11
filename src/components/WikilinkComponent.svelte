@@ -2,6 +2,7 @@
   import { decode } from '@nostr/tools/nip19';
   import type { SearchCard, Card } from '$lib/types';
   import { next } from '$lib/utils';
+  import { filterSecureRelays } from '$lib/security';
   import { getExtra } from 'svelte-asciidoc';
 
   interface Props {
@@ -53,7 +54,7 @@
         id: next(),
         type: 'article',
         data: [decodedNaddr.identifier, decodedNaddr.pubkey],
-        relayHints: decodedNaddr.relays || []
+        relayHints: filterSecureRelays(decodedNaddr.relays || [])
       });
     }
   }

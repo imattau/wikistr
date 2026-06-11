@@ -5,6 +5,7 @@
   import { cards } from '$lib/state';
   import { type EditorCard, type Card, serializeCardForRouter } from '$lib/types';
   import { scrollCardIntoView, isElementInViewport, hashbow, urlWithoutScheme } from '$lib/utils';
+  import { sanitizeRelayUrl } from '$lib/security';
   import Article from '$cards/Article.svelte';
   import Editor from '$cards/Editor.svelte';
   import Welcome from '$cards/Welcome.svelte';
@@ -103,7 +104,10 @@
       case 'article':
         return card.data.join('*');
       case 'relay':
-        return encodeURIComponent(urlWithoutScheme(card.data));
+        {
+          const relayUrl = sanitizeRelayUrl(card.data);
+          return relayUrl ? encodeURIComponent(urlWithoutScheme(relayUrl)) : null;
+        }
       case 'user':
         return npubEncode(card.data);
       case 'editor':

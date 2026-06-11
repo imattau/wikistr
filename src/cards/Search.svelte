@@ -13,10 +13,11 @@
   import { addUniqueTaggedReplaceable, getTagOr, next, unique } from '$lib/utils';
   import { DEFAULT_SEARCH_RELAYS } from '$lib/defaults';
   import ArticleListItem from '$components/ArticleListItem.svelte';
-  import { replaceState } from '$app/navigation';
-  import { page } from '$app/state';
+import { replaceState } from '$app/navigation';
+import { page } from '$app/state';
 import { cards } from '$lib/state';
 import { filterSecureRelays } from '$lib/security';
+import { sanitizeRelayUrl } from '$lib/security';
 
   interface Props {
     card: Card;
@@ -182,7 +183,7 @@ import { filterSecureRelays } from '$lib/security';
         .flat()
         .filter((ri) => ri.write)
         .map((ri) => ri.url)
-    );
+    ).filter((url) => filterSecureRelays([url]).length > 0);
 
     let previouslyQueriedRelays: string[] = [];
     uwrcancel = userWikiRelays.subscribe(async (uwr) => {
@@ -282,7 +283,8 @@ import { filterSecureRelays } from '$lib/security';
 
     function receivedEvent(relay: any, id: string) {
       if (!(id in seenCache)) seenCache[id] = [];
-      if (seenCache[id].indexOf(relay.url) === -1) seenCache[id].push(relay.url);
+      const safeUrl = sanitizeRelayUrl(relay.url);
+      if (safeUrl && seenCache[id].indexOf(safeUrl) === -1) seenCache[id].push(safeUrl);
     }
   }
 
@@ -294,7 +296,7 @@ import { filterSecureRelays } from '$lib/security';
         id: next(),
         type: 'article',
         data: [getTagOr(result, 'd'), result.pubkey],
-        relayHints: seenCache[result.id],
+        relayHints: (seenCache[result.id] || []).map((url) => sanitizeRelayUrl(url)).filter((url): url is string => !!url),
         actualEvent: { ...result, tags: result.tags.map(t => [...t]) },
         versions:
           getTagOr(result, 'd') === normalizeIdentifier(query)

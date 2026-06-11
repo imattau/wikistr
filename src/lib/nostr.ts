@@ -7,6 +7,28 @@ import { buildPasskeySignerShim, hexToBytes, bytesToHex, isPasskeyShim } from '.
 
 let passkeySignerShim: PasskeySignerShim | null = null;
 let restoredPasskeyPubkey: string | null = null;
+let nostrBridgePromise: Promise<void> | null = null;
+
+async function ensureWindowNostrBridge(): Promise<void> {
+  if (typeof window === 'undefined' || (window as any).nostr) {
+    return;
+  }
+
+  if (!nostrBridgePromise) {
+    nostrBridgePromise = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://unpkg.com/window.nostr.js/dist/window.nostr.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load window.nostr.js'));
+      document.head.appendChild(script);
+    }).finally(() => {
+      nostrBridgePromise = null;
+    });
+  }
+
+  await nostrBridgePromise;
+}
 
 function getActiveSigner(): PasskeySignerShim | null {
   if (passkeySignerShim) {
@@ -56,7 +78,11 @@ export const gitPatchKind = 1617;
 
 export const signer = {
   getPublicKey: async () => {
-    const nostr = getActiveSigner();
+    let nostr = getActiveSigner();
+    if (!nostr && typeof window !== 'undefined') {
+      await ensureWindowNostrBridge();
+      nostr = getActiveSigner();
+    }
     if (!nostr) {
       throw new Error('No Nostr signer is available.')
     }
@@ -65,7 +91,11 @@ export const signer = {
     return pubkey;
   },
   signEvent: async (event: EventTemplate): Promise<Event> => {
-    const nostr = getActiveSigner();
+    let nostr = getActiveSigner();
+    if (!nostr && typeof window !== 'undefined') {
+      await ensureWindowNostrBridge();
+      nostr = getActiveSigner();
+    }
     if (!nostr) {
       throw new Error('No Nostr signer is available.')
     }
@@ -74,14 +104,22 @@ export const signer = {
     return se;
   },
   encrypt: async (pubkey: string, plaintext: string): Promise<string> => {
-    const nostr = getActiveSigner();
+    let nostr = getActiveSigner();
+    if (!nostr && typeof window !== 'undefined') {
+      await ensureWindowNostrBridge();
+      nostr = getActiveSigner();
+    }
     if (!nostr) {
       throw new Error('No Nostr signer is available.')
     }
     return await nostr.nip04.encrypt(pubkey, plaintext);
   },
   decrypt: async (pubkey: string, ciphertext: string): Promise<string> => {
-    const nostr = getActiveSigner();
+    let nostr = getActiveSigner();
+    if (!nostr && typeof window !== 'undefined') {
+      await ensureWindowNostrBridge();
+      nostr = getActiveSigner();
+    }
     if (!nostr) {
       throw new Error('No Nostr signer is available.')
     }
@@ -196,11 +234,11 @@ export const userWikiRelays = derived(
         const customStored = localStorage.getItem('wikistr:custom-relays');
         if (customStored) {
           try {
-            customRelays = JSON.parse(customStored);
+            customRelays = filterSecureRelays(JSON.parse(customStored));
           } catch (e) {}
         }
       }
-      set(unique(customRelays, DEFAULT_WIKI_RELAYS));
+      set(filterSecureRelays(unique(customRelays, DEFAULT_WIKI_RELAYS)));
     }
   },
   DEFAULT_WIKI_RELAYS
@@ -212,7 +250,7 @@ export async function getBasicUserWikiRelays(pubkey: string): Promise<string[]> 
     const customStored = localStorage.getItem('wikistr:custom-relays');
     if (customStored) {
       try {
-        customRelays = JSON.parse(customStored);
+        customRelays = filterSecureRelays(JSON.parse(customStored));
       } catch (e) {}
     }
   }

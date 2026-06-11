@@ -2,13 +2,39 @@ export function isSecurePage(): boolean {
   return typeof window !== 'undefined' && window.location.protocol === 'https:'
 }
 
+export function sanitizeRelayUrl(url: string | null | undefined): string | null {
+  if (typeof url !== 'string') return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+    return null
+  }
+
+  if (isSecurePage() && parsed.protocol !== 'wss:') {
+    return null
+  }
+
+  if (!parsed.hostname || parsed.hostname === 'undefined' || parsed.hostname === 'null') {
+    return null
+  }
+
+  return parsed.toString()
+}
+
 export function isSecureRelayUrl(url: string): boolean {
-  if (!isSecurePage()) return true
-  return !url.trim().startsWith('ws://')
+  return sanitizeRelayUrl(url) !== null
 }
 
 export function filterSecureRelays(relays: string[]): string[] {
-  return relays.filter((url) => isSecureRelayUrl(url))
+  return relays.map((url) => sanitizeRelayUrl(url)).filter((url): url is string => url !== null)
 }
 
 export function safeImageUrl(url: string | null | undefined): string | null {
@@ -18,4 +44,8 @@ export function safeImageUrl(url: string | null | undefined): string | null {
   if (!isSecurePage()) return trimmed
   if (trimmed.startsWith('http://')) return null
   return trimmed
+}
+
+export function safeMediaUrl(url: string | null | undefined): string | null {
+  return safeImageUrl(url)
 }

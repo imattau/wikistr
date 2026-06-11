@@ -6,7 +6,7 @@
   import { page } from '$app/state';
   import { cards } from '$lib/state';
   import { next, scrollCardIntoView } from '$lib/utils';
-  import { isSecurePage } from '$lib/security';
+  import { isSecurePage, sanitizeRelayUrl } from '$lib/security';
   import type { ArticleCard, Card, EditorCard, RelayCard, SearchCard, UserCard } from '$lib/types';
 
   onMount(() => {
@@ -82,7 +82,15 @@
       ditem.startsWith('wss://') ||
       (ditem.startsWith('ws://') && !isSecurePage())
     ) {
-      return { id: next(), type: 'relay', data: normalizeURL(ditem) } as RelayCard;
+      try {
+        const normalized = sanitizeRelayUrl(normalizeURL(ditem));
+        if (normalized) {
+          return { id: next(), type: 'relay', data: normalized } as RelayCard;
+        }
+      } catch {
+        // Fall through to search card below for malformed relay-like input.
+      }
+      return { id: next(), type: 'find', data: ditem, preferredAuthors: [], redirect: true } as SearchCard;
     } else if (pathPart.match(/^[\w-]+\*[a-f0-9]{64}$/)) {
       return { id: next(), type: 'article', data: pathPart.split('*') } as ArticleCard;
     } else {

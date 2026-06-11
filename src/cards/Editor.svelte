@@ -3,6 +3,9 @@
   import SvelteAsciidoc from 'svelte-asciidoc';
 
   import WikilinkComponent from '$components/WikilinkComponent.svelte';
+  import SafeImage from '$components/asciidoc/SafeImage.svelte';
+  import SafeAudio from '$components/asciidoc/SafeAudio.svelte';
+  import SafeVideo from '$components/asciidoc/SafeVideo.svelte';
   import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
   import { wikiKind, gitPatchKind, account, signer } from '$lib/nostr';
   import type { ArticleCard, Card, EditorCard, EditorData } from '$lib/types.ts';
@@ -390,6 +393,7 @@
         <div class="prose prose-p:my-0 prose-li:my-0">
           <SvelteAsciidoc
             source={appendLinkMacroToNostrLinks(turnWikilinksIntoAsciidocLinks(data.content))}
+            customRenderers={{ image: SafeImage, audio: SafeAudio, video: SafeVideo }}
             naturalRenderers={{ a: WikilinkComponent as any }}
           />
         </div>

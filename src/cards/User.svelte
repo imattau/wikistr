@@ -9,6 +9,7 @@
   import ArticleListItem from '$components/ArticleListItem.svelte';
   import UserLabel from '$components/UserLabel.svelte';
   import { subscribeOutbox } from '$lib/outbox';
+  import { sanitizeRelayUrl } from '$lib/security';
 
   interface Props {
     card: UserCard;
@@ -39,7 +40,8 @@
       {
         receivedEvent(relay: any, id: string) {
           if (!(id in seenCache)) seenCache[id] = [];
-          if (seenCache[id].indexOf(relay.url) === -1) seenCache[id].push(relay.url);
+          const safeUrl = sanitizeRelayUrl(relay.url);
+          if (safeUrl && seenCache[id].indexOf(safeUrl) === -1) seenCache[id].push(safeUrl);
         },
         onevent(evt: NostrEvent) {
           if (addUniqueTaggedReplaceable(results, evt)) update();
@@ -51,11 +53,12 @@
   });
 
   function openArticle(result: NostrEvent) {
+    const relayHints = (seenCache[result.id] || []).map((url) => sanitizeRelayUrl(url)).filter((url): url is string => !!url);
     let articleCard: ArticleCard = {
       id: next(),
       type: 'article',
       data: [getTagOr(result, 'd'), result.pubkey],
-      relayHints: seenCache[result.id] || [],
+      relayHints,
       actualEvent: result
     };
     createChild(articleCard);

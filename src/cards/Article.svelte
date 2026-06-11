@@ -16,7 +16,7 @@
   import RelayItem from '$components/RelayItem.svelte';
 import { diffLines } from '$lib/diff';
 import { publishPrivateTagsToRelays } from '$lib/privateTagsSync';
-import { filterSecureRelays } from '$lib/security';
+import { filterSecureRelays, sanitizeRelayUrl } from '$lib/security';
 
   interface Props {
     card: Card;
@@ -432,8 +432,9 @@ import { filterSecureRelays } from '$lib/security';
         {
           id: 'article',
           receivedEvent(relay, _id) {
-            if (seenOn.indexOf(relay.url) === -1) {
-              seenOn = [...seenOn, relay.url];
+            const safeUrl = sanitizeRelayUrl(relay.url);
+            if (safeUrl && seenOn.indexOf(safeUrl) === -1) {
+              seenOn = [...seenOn, safeUrl];
             }
           },
           onevent(evt) {
@@ -623,11 +624,7 @@ import { filterSecureRelays } from '$lib/security';
     // help nostr stay by publishing articles from others into their write relays
     let to = setTimeout(async () => {
       if (event) {
-        filterSecureRelays(
-          (await loadRelayList(event.pubkey)).items
-            .filter((ri) => ri.write)
-            .map((ri) => ri.url)
-        )
+        filterSecureRelays((await loadRelayList(event.pubkey)).items.filter((ri) => ri.write).map((ri) => ri.url))
           .slice(0, 3)
           .forEach(async (url) => {
             let relay = await pool.ensureRelay(url);

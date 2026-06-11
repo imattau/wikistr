@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
-  import { isSecurePage, isSecureRelayUrl } from '$lib/security';
+  import { filterSecureRelays, isSecurePage, isSecureRelayUrl } from '$lib/security';
 
   let customRelays = $state<string[]>([]);
   let newRelay = $state('');
@@ -10,7 +10,7 @@
     const stored = localStorage.getItem('wikistr:custom-relays');
     if (stored) {
       try {
-        customRelays = JSON.parse(stored);
+        customRelays = filterSecureRelays(JSON.parse(stored));
       } catch (e) {
         customRelays = [];
       }
@@ -32,7 +32,7 @@
       alert('Relay already added');
       return;
     }
-    customRelays = [...customRelays, url];
+    customRelays = filterSecureRelays([...customRelays, url]);
     newRelay = '';
   }
 
@@ -41,7 +41,7 @@
   }
 
   function saveData() {
-    localStorage.setItem('wikistr:custom-relays', JSON.stringify(customRelays));
+    localStorage.setItem('wikistr:custom-relays', JSON.stringify(filterSecureRelays(customRelays)));
     window.location.reload();
   }
 </script>

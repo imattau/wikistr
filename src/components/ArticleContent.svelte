@@ -5,6 +5,9 @@
   import { loadWikiAuthors } from '@nostr/gadgets/lists';
 
   import WikilinkComponent from './WikilinkComponent.svelte';
+  import SafeImage from '$components/asciidoc/SafeImage.svelte';
+  import SafeAudio from '$components/asciidoc/SafeAudio.svelte';
+  import SafeVideo from '$components/asciidoc/SafeVideo.svelte';
   import type { Card } from '$lib/types';
   import { turnWikilinksIntoAsciidocLinks, appendLinkMacroToNostrLinks } from '$lib/utils';
 
@@ -28,6 +31,7 @@
 <SvelteAsciidoc
   supportMarkdownTransition={event.created_at < 1725137951}
   source={content}
+  customRenderers={{ image: SafeImage, audio: SafeAudio, video: SafeVideo }}
   naturalRenderers={{ a: WikilinkComponent as any }}
   extra={{ createChild, preferredAuthors: [event.pubkey, ...authorPreferredWikiAuthors] }}
 />

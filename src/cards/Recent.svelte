@@ -13,11 +13,12 @@
   } from '$lib/nostr';
   import type { ArticleCard, Card } from '$lib/types';
   import { addUniqueTaggedReplaceable, getTagOr, next } from '$lib/utils';
-  import { subscribeAllOutbox } from '$lib/outbox';
-  import ArticleListItem from '$components/ArticleListItem.svelte';
-  import RelayItem from '$components/RelayItem.svelte';
-  import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
-  import { pool } from '@nostr/gadgets/global';
+import { subscribeAllOutbox } from '$lib/outbox';
+import ArticleListItem from '$components/ArticleListItem.svelte';
+import RelayItem from '$components/RelayItem.svelte';
+import { DEFAULT_WIKI_RELAYS } from '$lib/defaults';
+import { sanitizeRelayUrl } from '$lib/security';
+import { pool } from '@nostr/gadgets/global';
 
   interface Props {
     createChild: (card: Card) => void;
@@ -50,12 +51,13 @@
   });
 
   function openArticle(result: Event) {
+    const relayHints = (seenCache[result.id] || []).map((url) => sanitizeRelayUrl(url)).filter((url): url is string => !!url);
     createChild({
       id: next(),
       type: 'article',
       data: [getTagOr(result, 'd'), result.pubkey],
       actualEvent: result,
-      relayHints: seenCache[result.id] || []
+      relayHints
     } as ArticleCard);
   }
 
@@ -127,7 +129,8 @@
 
   function receivedEvent(relay: any, id: string) {
     if (!(id in seenCache)) seenCache[id] = [];
-    if (seenCache[id].indexOf(relay.url) === -1) seenCache[id].push(relay.url);
+    const safeUrl = sanitizeRelayUrl(relay.url);
+    if (safeUrl && seenCache[id].indexOf(safeUrl) === -1) seenCache[id].push(safeUrl);
   }
 </script>
 

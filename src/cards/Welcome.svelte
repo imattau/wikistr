@@ -176,8 +176,8 @@
 <div class="font-bold text-3xl text-stone-850">Account</div>
 <div class="mb-6 mt-3">
   {#if $account}
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 bg-white border border-stone-200 rounded-xl shadow-sm">
-      <div class="flex items-center min-w-0">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-4 bg-white border border-stone-200 rounded-xl shadow-sm">
+      <div class="flex items-start gap-3 min-w-0">
         {#if safeImageUrl($account.image)}
           <img class="h-12 w-12 rounded-full object-cover border border-stone-200" src={safeImageUrl($account.image)!} alt="user avatar" />
         {:else}
@@ -185,15 +185,15 @@
             {$account.shortName?.slice(0, 2) || 'US'}
           </div>
         {/if}
-        <div class="ml-3 min-w-0">
+        <div class="min-w-0">
           <p class="font-semibold text-stone-900 leading-tight break-words">{$account.shortName || 'Nostr User'}</p>
-          <p class="text-xs text-stone-500 font-mono mt-1 truncate w-[calc(100vw-8rem)] sm:w-64">{$account.npub}</p>
+          <p class="text-xs text-stone-500 font-mono mt-1 break-all max-w-full sm:max-w-64">{$account.npub}</p>
         </div>
       </div>
       <button
         onclick={handleLogout}
         type="button"
-        class="inline-flex w-full sm:w-auto justify-center items-center px-3 py-1.5 border border-stone-200 hover:border-red-200 text-xs font-semibold rounded-lg bg-white hover:bg-red-50 text-stone-700 hover:text-red-700 transition-all focus:outline-none shadow-sm cursor-pointer"
+        class="inline-flex w-full sm:w-auto justify-center items-center px-3 py-2 border border-stone-200 hover:border-red-200 text-xs font-semibold rounded-lg bg-white hover:bg-red-50 text-stone-700 hover:text-red-700 transition-all focus:outline-none shadow-sm cursor-pointer sm:mt-0"
       >
         Logout
       </button>

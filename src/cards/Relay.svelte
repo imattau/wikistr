@@ -6,7 +6,7 @@
 
   import type { ArticleCard, RelayCard, Card } from '$lib/types';
   import { addUniqueTaggedReplaceable, getTagOr, next, urlWithoutScheme } from '$lib/utils';
-  import { isSecureRelayUrl, isSecurePage } from '$lib/security';
+  import { isSecurePage, sanitizeRelayUrl } from '$lib/security';
   import { wikiKind } from '$lib/nostr';
   import ArticleListItem from '$components/ArticleListItem.svelte';
 
@@ -19,9 +19,10 @@
   let { card, replaceSelf, createChild }: Props = $props();
   let results = $state<NostrEvent[]>([]);
   let tried = $state(false);
+  let safeRelayUrl = $derived(sanitizeRelayUrl(card.data));
 
   onMount(() => {
-    if (!isSecureRelayUrl(card.data)) {
+    if (!safeRelayUrl) {
       tried = true;
       return;
     }
@@ -35,7 +36,7 @@
     }, 1500);
 
     let sub = pool.subscribeMany(
-      [card.data],
+      [safeRelayUrl],
       [
         {
           kinds: [wikiKind],
@@ -61,7 +62,7 @@
       id: next(),
       type: 'article',
       data: [getTagOr(result, 'd'), result.pubkey],
-      relayHints: [card.data],
+      relayHints: safeRelayUrl ? [safeRelayUrl] : [],
       actualEvent: result
     };
     if (ev.button === 1) createChild(articleCard);
@@ -69,8 +70,8 @@
   }
 </script>
 
-<div class="mb-0 text-2xl break-all">{urlWithoutScheme(card.data)}</div>
-{#if isSecurePage() && !isSecureRelayUrl(card.data)}
+<div class="mb-0 text-2xl break-all">{safeRelayUrl ? urlWithoutScheme(safeRelayUrl) : urlWithoutScheme(card.data)}</div>
+{#if isSecurePage() && !safeRelayUrl}
   <div class="px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg mt-2 text-sm text-amber-800">
     This relay uses `ws://` and cannot be opened from a secure page without mixed content.
   </div>
