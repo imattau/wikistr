@@ -4,7 +4,8 @@
     account,
     userWikiRelays,
     completePasskeySession,
-    logout
+    logout,
+    hasActiveSigner
   } from '$lib/nostr';
   import {
     hasStoredPasskeyIdentity,
@@ -40,6 +41,7 @@
   let showRelays = $state(false);
   let privateTagsMap = $state<{ [tag: string]: { dTag: string; pubkey: string; title: string }[] }>({});
   let activePrivateTag = $state<string | null>(null);
+  let syncingFromRelays = $state(false);
 
   function loadPrivateTagsMap() {
     try {
@@ -92,8 +94,10 @@
   let hasStoredPasskey = $state(false);
   let showImportInput = $state(false);
   let importNsecValue = $state('');
+  let signerReady = $state(hasActiveSigner());
 
   onMount(() => {
+    signerReady = hasActiveSigner();
     loadDashboardData();
     window.addEventListener('storage', loadDashboardData);
     window.addEventListener('wikistr:dashboard-update', loadDashboardData);
@@ -104,7 +108,7 @@
     hasStoredPasskey = hasStoredPasskeyIdentity();
 
     const unsubAccount = account.subscribe((acc) => {
-      if (acc) {
+      if (acc && signerReady) {
         void syncDashboardListsFromRelays(acc.pubkey);
         void fetchPrivateTagsFromRelays(acc.pubkey);
       }
@@ -117,16 +121,25 @@
     };
   });
 
-  function doLogin() {
-    signer.getPublicKey();
+  async function doLogin() {
+    signerReady = true;
+    try {
+      await signer.getPublicKey();
+    } catch (e) {
+      signerReady = hasActiveSigner();
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Extension login failed');
+    }
   }
 
   async function handlePasskeyRegister() {
     try {
+      signerReady = true;
       const { secretKey, pubkey } = await registerPasskeyIdentity();
       await completePasskeySession(secretKey, pubkey);
       hasStoredPasskey = hasStoredPasskeyIdentity();
     } catch (e) {
+      signerReady = hasActiveSigner();
       console.error(e);
       alert(e instanceof Error ? e.message : 'Passkey registration failed');
     }
@@ -134,9 +147,11 @@
 
   async function handlePasskeyUnlock() {
     try {
+      signerReady = true;
       const { secretKey, pubkey } = await unlockPasskeyIdentity();
       await completePasskeySession(secretKey, pubkey);
     } catch (e) {
+      signerReady = hasActiveSigner();
       console.error(e);
       alert(e instanceof Error ? e.message : 'Passkey unlock failed');
     }
@@ -145,12 +160,14 @@
   async function handlePasskeyImport() {
     if (!importNsecValue) return;
     try {
+      signerReady = true;
       const { secretKey, pubkey } = await importPasskeyIdentityFromNsec(importNsecValue);
       await completePasskeySession(secretKey, pubkey);
       hasStoredPasskey = hasStoredPasskeyIdentity();
       showImportInput = false;
       importNsecValue = '';
     } catch (e) {
+      signerReady = hasActiveSigner();
       console.error(e);
       alert(e instanceof Error ? e.message : 'Passkey import failed');
     }
@@ -165,6 +182,23 @@
 
   async function handleLogout() {
     await logout();
+    signerReady = false;
+  }
+
+  async function handleSyncFromRelays() {
+    if (!$account?.pubkey || syncingFromRelays) return;
+    if (!signerReady) {
+      alert('Unlock the passkey or connect a Nostr extension before syncing from relays.');
+      return;
+    }
+    syncingFromRelays = true;
+    try {
+      await syncDashboardListsFromRelays($account.pubkey);
+      await fetchPrivateTagsFromRelays($account.pubkey);
+      loadDashboardData();
+    } finally {
+      syncingFromRelays = false;
+    }
   }
 
   function replaceNewCard(newCard: Card) {
@@ -195,6 +229,16 @@
         class="inline-flex w-full sm:w-auto justify-center items-center px-3 py-2 border border-stone-200 hover:border-red-200 text-xs font-semibold rounded-lg bg-white hover:bg-red-50 text-stone-700 hover:text-red-700 transition-all focus:outline-none shadow-sm cursor-pointer sm:mt-0"
       >
         Logout
+      </button>
+    </div>
+    <div class="mt-3 flex justify-end">
+      <button
+        onclick={handleSyncFromRelays}
+        type="button"
+        disabled={syncingFromRelays || !signerReady}
+        class="inline-flex items-center justify-center px-3 py-2 border border-stone-200 hover:border-indigo-200 disabled:opacity-60 disabled:cursor-wait text-xs font-semibold rounded-lg bg-white hover:bg-indigo-50 text-stone-700 hover:text-indigo-700 transition-all focus:outline-none shadow-sm cursor-pointer"
+      >
+        {syncingFromRelays ? 'Syncing...' : signerReady ? 'Sync from Relays' : 'Unlock to Sync'}
       </button>
     </div>
   {:else}

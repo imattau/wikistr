@@ -1,13 +1,23 @@
-import type { Event, EventTemplate } from '@nostr/tools/pure';
-import { pool } from '@nostr/gadgets/global';
+import type { EventTemplate } from '@nostr/tools/pure';
+import type { NostrEvent } from 'applesauce-core/helpers/event';
+import { EventStore } from 'applesauce-core';
+import { createAddressLoader } from 'applesauce-loaders/loaders';
+import { RelayPool } from 'applesauce-relay';
 
-import { getBasicUserWikiRelays, signer } from './nostr';
+import { getBasicUserWikiRelays, hasActiveSigner, signer } from './nostr';
 
 export type VersionedStore<T> = {
   version: 1;
   updatedAt: number;
   items: T[];
 };
+
+const relayPool = new RelayPool();
+const eventStore = new EventStore();
+const addressLoader = createAddressLoader(relayPool, {
+  eventStore,
+  followRelayHints: true
+});
 
 function getStorage(): Storage | null {
   return typeof window === 'undefined' ? null : window.localStorage;
@@ -57,43 +67,40 @@ export function writeVersionedStore<T>(key: string, items: T[], updatedAt: numbe
   storage.setItem(key, JSON.stringify(payload));
 }
 
-export async function fetchLatestEncryptedEvent(pubkey: string, kind: number, dTags: string[]): Promise<Event | null> {
+export async function fetchLatestEncryptedEvent(pubkey: string, kind: number, dTags: string[]): Promise<NostrEvent | null> {
   const relays = await getBasicUserWikiRelays(pubkey);
-  let latestEvent: Event | null = null;
+  const pointer = {
+    kind,
+    pubkey,
+    identifier: dTags[0],
+    relays
+  };
+  let latestEvent: NostrEvent | null = null;
 
   await new Promise<void>((resolve) => {
-    const sub = pool.subscribeMany(
-      relays,
-      [
-        {
-          kinds: [kind],
-          authors: [pubkey],
-          '#d': dTags
-        }
-      ],
-      {
-        id: `fetch-encrypted-${kind}`,
-        onevent(evt) {
-          const dTag = evt.tags.find((tag) => tag[0] === 'd')?.[1];
-          if (!dTag || !dTags.includes(dTag)) return;
-          if (!latestEvent || evt.created_at > latestEvent.created_at) {
-            latestEvent = evt;
-          }
-        },
-        oneose() {
-          sub.close();
-          resolve();
-        }
+    const sub = addressLoader(pointer).subscribe({
+      next(evt) {
+        const dTag = evt.tags.find((tag) => tag[0] === 'd')?.[1];
+        if (!dTag || !dTags.includes(dTag)) return;
+        const stored = eventStore.getReplaceable(kind, pubkey, dTag);
+        latestEvent = stored ?? evt;
+      },
+      error(err) {
+        console.error(`Failed to fetch encrypted event ${kind}:${dTags[0]}`, err);
+        resolve();
+      },
+      complete() {
+        resolve();
       }
-    );
+    });
 
     setTimeout(() => {
-      sub.close();
+      sub.unsubscribe();
       resolve();
     }, 3500);
   });
 
-  return latestEvent;
+  return latestEvent ?? eventStore.getReplaceable(kind, pubkey, dTags[0]) ?? null;
 }
 
 export async function publishEncryptedEvent(
@@ -102,6 +109,9 @@ export async function publishEncryptedEvent(
   dTag: string,
   payload: string
 ): Promise<void> {
+  if (!hasActiveSigner()) {
+    throw new Error('Unlock the passkey or connect a Nostr extension before syncing relays.');
+  }
   const relays = await getBasicUserWikiRelays(pubkey);
   const content = await signer.encrypt(pubkey, payload);
   const eventTemplate: EventTemplate = {
@@ -113,14 +123,5 @@ export async function publishEncryptedEvent(
 
   const signedEvent = await signer.signEvent(eventTemplate);
 
-  await Promise.all(
-    relays.map(async (url) => {
-      try {
-        const relay = await pool.ensureRelay(url);
-        await relay.publish(signedEvent);
-      } catch (err) {
-        console.error(`Failed to publish encrypted event ${kind}:${dTag} to relay ${url}`, err);
-      }
-    })
-  );
+  await relayPool.publish(relays, signedEvent);
 }

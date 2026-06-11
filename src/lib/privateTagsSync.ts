@@ -4,7 +4,7 @@ import {
   readVersionedStore,
   writeVersionedStore
 } from './encryptedNostrStore';
-import { signer, wikiKind } from './nostr';
+import { hasActiveSigner, signer, wikiKind } from './nostr';
 
 type PrivateTagsMap = { [key: string]: string[] };
 type PrivateTagsEntry = { key: string; tags: string[] };
@@ -101,6 +101,9 @@ export function setPrivateTagsForArticle(pubkey: string, dTag: string, tags: str
 }
 
 export async function fetchPrivateTagsFromRelays(pubkey: string): Promise<void> {
+  if (!hasActiveSigner()) {
+    return;
+  }
   try {
     const latestEvent = await fetchLatestEncryptedEvent(pubkey, PRIVATE_TAGS_KIND, [PRIVATE_TAGS_DTAG]);
     if (!latestEvent?.content) return;

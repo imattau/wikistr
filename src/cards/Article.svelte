@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import * as idbkv from 'idb-keyval';
   import type { EventTemplate, NostrEvent } from '@nostr/tools/pure';
   import { pool } from '@nostr/gadgets/global';
@@ -26,6 +26,7 @@
     getRecentDashboardItems,
     publishPinnedDashboardList,
     publishRecentDashboardList,
+    syncDashboardListsFromRelays,
     setPinnedDashboardItems,
     setRecentDashboardItems
   } from '$lib/dashboardListsSync';
@@ -51,6 +52,18 @@
   let isPinned = $state(false);
   let lastHistoryEventId = $state<string | null>(null);
 
+  const DASHBOARD_REFRESH_DELAY_MS = 750;
+
+  function pause(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function refreshDashboardListsFromRelays(): Promise<void> {
+    if ($account?.pubkey) {
+      await syncDashboardListsFromRelays($account.pubkey);
+    }
+  }
+
   function loadPinnedState() {
     try {
       isPinned = getPinnedDashboardItems().some((x) => x.dTag === dTag && x.pubkey === pubkey);
@@ -62,8 +75,9 @@
   $effect(() => {
     if (event && event.id !== lastHistoryEventId) {
       lastHistoryEventId = event.id;
-      untrack(() => {
+      void (async () => {
         try {
+          await refreshDashboardListsFromRelays();
           const history = getRecentDashboardItems();
 
           const historyItem = {
@@ -79,11 +93,13 @@
           window.dispatchEvent(new Event('wikistr:dashboard-update'));
           if ($account?.pubkey) {
             void publishRecentDashboardList($account.pubkey);
+            await pause(DASHBOARD_REFRESH_DELAY_MS);
+            await refreshDashboardListsFromRelays();
           }
         } catch (e) {
           console.error('Failed to update history', e);
         }
-      });
+      })();
     }
   });
 
@@ -93,19 +109,24 @@
     }
   });
 
-  function togglePin() {
-    isPinned = !isPinned;
+  async function togglePin() {
     try {
-      const pinned = getPinnedDashboardItems().filter((x) => !(x.dTag === dTag && x.pubkey === pubkey));
+      await refreshDashboardListsFromRelays();
+      const currentPinned = getPinnedDashboardItems();
+      const pinned = currentPinned.filter((x) => !(x.dTag === dTag && x.pubkey === pubkey));
+      const shouldPin = !currentPinned.some((x) => x.dTag === dTag && x.pubkey === pubkey);
 
-      if (isPinned) {
+      if (shouldPin) {
         pinned.unshift({ dTag, pubkey, title: title || dTag });
       }
+      isPinned = shouldPin;
       setPinnedDashboardItems(pinned);
 
       window.dispatchEvent(new Event('wikistr:dashboard-update'));
       if ($account?.pubkey) {
-        void publishPinnedDashboardList($account.pubkey);
+        await publishPinnedDashboardList($account.pubkey);
+        await pause(DASHBOARD_REFRESH_DELAY_MS);
+        await refreshDashboardListsFromRelays();
       }
     } catch (e) {
       console.error(e);

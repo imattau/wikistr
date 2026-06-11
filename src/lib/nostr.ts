@@ -9,8 +9,21 @@ let passkeySignerShim: PasskeySignerShim | null = null;
 let restoredPasskeyPubkey: string | null = null;
 let nostrBridgePromise: Promise<void> | null = null;
 
+function hasActivePasskeySession(): boolean {
+  if (passkeySignerShim) {
+    return true;
+  }
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return (
+    sessionStorage.getItem('wikistr:passkey_session_nsec') !== null &&
+    sessionStorage.getItem('wikistr:passkey_session_pubkey') !== null
+  );
+}
+
 async function ensureWindowNostrBridge(): Promise<void> {
-  if (typeof window === 'undefined' || (window as any).nostr) {
+  if (typeof window === 'undefined' || (window as any).nostr || hasActivePasskeySession()) {
     return;
   }
 
@@ -41,6 +54,10 @@ function getActiveSigner(): PasskeySignerShim | null {
   return nostr && typeof nostr.getPublicKey === 'function' && typeof nostr.signEvent === 'function'
     ? (nostr as PasskeySignerShim)
     : null;
+}
+
+export function hasActiveSigner(): boolean {
+  return getActiveSigner() !== null;
 }
 
 if (typeof window !== 'undefined') {

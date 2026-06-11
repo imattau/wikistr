@@ -6,7 +6,7 @@ import {
   readVersionedStore,
   writeVersionedStore
 } from './encryptedNostrStore';
-import { signer } from './nostr';
+import { hasActiveSigner, signer } from './nostr';
 
 export type DashboardPinnedItem = {
   dTag: string;
@@ -128,6 +128,9 @@ export function setRecentDashboardItems(items: DashboardHistoryItem[], updatedAt
 }
 
 export async function syncDashboardListsFromRelays(pubkey: string): Promise<void> {
+  if (!hasActiveSigner()) {
+    return;
+  }
   try {
     const latestByDTag = await fetchLatestDashboardListEvents(pubkey);
     await Promise.all([
