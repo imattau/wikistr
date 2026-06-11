@@ -27,6 +27,29 @@ const HISTORY_STORAGE_KEY = 'wikistr:history';
 const PINNED_LIST_DTAG = 'wikistr-pinned';
 const HISTORY_LIST_DTAG = 'wikistr-history';
 
+function parseLegacyPinned(value: unknown): DashboardPinnedItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is DashboardPinnedItem => {
+    return !!item
+      && typeof item === 'object'
+      && typeof (item as DashboardPinnedItem).dTag === 'string'
+      && typeof (item as DashboardPinnedItem).pubkey === 'string'
+      && typeof (item as DashboardPinnedItem).title === 'string';
+  });
+}
+
+function parseLegacyHistory(value: unknown): DashboardHistoryItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is DashboardHistoryItem => {
+    return !!item
+      && typeof item === 'object'
+      && typeof (item as DashboardHistoryItem).dTag === 'string'
+      && typeof (item as DashboardHistoryItem).pubkey === 'string'
+      && typeof (item as DashboardHistoryItem).title === 'string'
+      && typeof (item as DashboardHistoryItem).timestamp === 'number';
+  });
+}
+
 function replaceStoredListIfNewer<T>(key: string, items: T[], updatedAt: number): boolean {
   const current = readVersionedStore<T>(key, []);
   if (updatedAt <= current.updatedAt) {
@@ -81,11 +104,19 @@ async function publishEncryptedList<T>(pubkey: string, dTag: string, storageKey:
 }
 
 export function getPinnedDashboardItems(): DashboardPinnedItem[] {
-  return readVersionedStore<DashboardPinnedItem>(PINNED_STORAGE_KEY, []).items;
+  const store = readVersionedStore<DashboardPinnedItem>(PINNED_STORAGE_KEY, [], parseLegacyPinned);
+  if (store.updatedAt === 0 && store.items.length > 0) {
+    writeVersionedStore(PINNED_STORAGE_KEY, store.items);
+  }
+  return store.items;
 }
 
 export function getRecentDashboardItems(): DashboardHistoryItem[] {
-  return readVersionedStore<DashboardHistoryItem>(HISTORY_STORAGE_KEY, []).items;
+  const store = readVersionedStore<DashboardHistoryItem>(HISTORY_STORAGE_KEY, [], parseLegacyHistory);
+  if (store.updatedAt === 0 && store.items.length > 0) {
+    writeVersionedStore(HISTORY_STORAGE_KEY, store.items);
+  }
+  return store.items;
 }
 
 export function setPinnedDashboardItems(items: DashboardPinnedItem[], updatedAt?: number): void {
