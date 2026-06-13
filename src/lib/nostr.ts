@@ -10,16 +10,7 @@ let restoredPasskeyPubkey: string | null = null;
 let nostrBridgePromise: Promise<void> | null = null;
 
 function hasActivePasskeySession(): boolean {
-  if (passkeySignerShim) {
-    return true;
-  }
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  return (
-    sessionStorage.getItem('wikistr:passkey_session_nsec') !== null &&
-    sessionStorage.getItem('wikistr:passkey_session_pubkey') !== null
-  );
+  return passkeySignerShim !== null;
 }
 
 async function ensureWindowNostrBridge(): Promise<void> {
@@ -60,21 +51,7 @@ export function hasActiveSigner(): boolean {
   return getActiveSigner() !== null;
 }
 
-if (typeof window !== 'undefined') {
-  const sessionNsec = sessionStorage.getItem('wikistr:passkey_session_nsec');
-  if (sessionNsec) {
-    try {
-      const secretKey = hexToBytes(sessionNsec);
-      passkeySignerShim = buildPasskeySignerShim(secretKey);
-      (window as any).nostr = passkeySignerShim;
-      restoredPasskeyPubkey = sessionStorage.getItem('wikistr:passkey_session_pubkey');
-    } catch (e) {
-      sessionStorage.removeItem('wikistr:passkey_session_nsec');
-      sessionStorage.removeItem('wikistr:passkey_session_pubkey');
-      console.error('Failed to restore passkey session', e);
-    }
-  }
-}
+// The passkey session is in-memory only. No restoration from storage.
 import { DEFAULT_WIKI_RELAYS } from './defaults';
 import { unique } from './utils';
 import { filterSecureRelays } from './security';
@@ -208,16 +185,12 @@ export const account = readable<NostrUser | null>(null, (set) => {
 });
 
 export async function completePasskeySession(secretKey: Uint8Array, pubkey: string): Promise<void> {
-  sessionStorage.setItem('wikistr:passkey_session_nsec', bytesToHex(secretKey));
-  sessionStorage.setItem('wikistr:passkey_session_pubkey', pubkey);
   passkeySignerShim = buildPasskeySignerShim(secretKey);
   (window as any).nostr = passkeySignerShim;
   await setAccount(pubkey);
 }
 
 export async function logout(): Promise<void> {
-  sessionStorage.removeItem('wikistr:passkey_session_nsec');
-  sessionStorage.removeItem('wikistr:passkey_session_pubkey');
   passkeySignerShim = null;
   if (typeof window !== 'undefined') {
     if (isPasskeyShim((window as any).nostr)) {
