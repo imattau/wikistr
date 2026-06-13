@@ -81,6 +81,11 @@ export const signer = {
       throw new Error('No Nostr signer is available.')
     }
     const pubkey = await nostr.getPublicKey();
+    if (isPasskeyShim(nostr)) {
+      await idbkv.set('wikistr:login_method', 'passkey');
+    } else {
+      await idbkv.set('wikistr:login_method', 'extension');
+    }
     setAccount(pubkey);
     return pubkey;
   },
@@ -179,6 +184,10 @@ export const account = readable<NostrUser | null>(null, (set) => {
 
   // try to load account from local storage on startup
   setTimeout(async () => {
+    const loginMethod = await idbkv.get('wikistr:login_method');
+    if (loginMethod === 'passkey') {
+      return;
+    }
     const data = await idbkv.get('wikistr:loggedin');
     if (data) set(data);
   }, 700);
@@ -187,6 +196,7 @@ export const account = readable<NostrUser | null>(null, (set) => {
 export async function completePasskeySession(secretKey: Uint8Array, pubkey: string): Promise<void> {
   passkeySignerShim = buildPasskeySignerShim(secretKey);
   (window as any).nostr = passkeySignerShim;
+  await idbkv.set('wikistr:login_method', 'passkey');
   await setAccount(pubkey);
 }
 
@@ -197,6 +207,7 @@ export async function logout(): Promise<void> {
       delete (window as any).nostr;
     }
   }
+  await idbkv.del('wikistr:login_method');
   await setAccount(null);
 }
 
