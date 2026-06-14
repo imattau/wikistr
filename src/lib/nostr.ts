@@ -206,6 +206,10 @@ export async function logout(): Promise<void> {
     if (isPasskeyShim((window as any).nostr)) {
       delete (window as any).nostr;
     }
+    window.localStorage.removeItem('wikistr:pinned');
+    window.localStorage.removeItem('wikistr:history');
+    window.localStorage.removeItem('wikistr:private-tags');
+    window.dispatchEvent(new Event('wikistr:dashboard-update'));
   }
   await idbkv.del('wikistr:login_method');
   await setAccount(null);
