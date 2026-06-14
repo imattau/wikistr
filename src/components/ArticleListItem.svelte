@@ -6,7 +6,7 @@
   import { DEFAULT_SEARCH_RELAYS } from '$lib/defaults';
 
   import UserLabel from './UserLabel.svelte';
-  import { formatDate } from '$lib/utils';
+  import { formatDate, cleanArticlePreview } from '$lib/utils';
 
   interface Props {
     openArticle: (event: NostrEvent, ev: MouseEvent) => void;
@@ -18,14 +18,7 @@
   let reactionEvents = $state<NostrEvent[]>([]);
   let authoritativeCount = $derived(reactionEvents.filter(r => r.content === '✅').length);
 
-  let plainText = $derived(
-    event.content
-      .slice(0, 210)
-      .replace(/\[\[(.*?)\]\]/g, (_: any, content: any) => {
-        return content;
-      })
-      .slice(0, 190)
-  );
+  let plainText = $derived(cleanArticlePreview(event.content));
 
   function handleClick(ev: MouseEvent) {
     try {

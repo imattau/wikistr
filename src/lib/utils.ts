@@ -160,3 +160,87 @@ export function turnWikilinksIntoAsciidocLinks(content: string): string {
 export function appendLinkMacroToNostrLinks(content: string): string {
   return content.replace(/nostr:/g, 'link:nostr:');
 }
+
+export function cleanArticlePreview(content: string): string {
+  if (!content) return '';
+
+  const lines = content.slice(0, 2000).split(/\r?\n/);
+  const cleanedLines: string[] = [];
+  let inCodeBlock = false;
+
+  for (let line of lines) {
+    const trimmed = line.trim();
+
+    // Toggle and skip block delimiters (e.g., ----, ====, ****, ...., ++++, etc. or --)
+    if (/^[-=.*~+]{4,}$/.test(trimmed) || trimmed === '--') {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) {
+      continue;
+    }
+    // Skip block attributes [source,...]
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      continue;
+    }
+    // Skip block titles starting with . (but not followed by space, e.g. .Title)
+    if (trimmed.startsWith('.') && trimmed.length > 1 && !/\s/.test(trimmed[1])) {
+      continue;
+    }
+    // Skip attribute entries like :author: Matt
+    if (/^:[a-zA-Z0-9_-]+:/.test(trimmed)) {
+      continue;
+    }
+
+    // Process headers: e.g. "== My Header" -> "My Header", or "# My Header" -> "My Header"
+    let processed = line;
+    const headerMatch = trimmed.match(/^(?:={1,6}|#{1,6})\s+(.+)$/);
+    if (headerMatch) {
+      processed = headerMatch[1];
+    } else {
+      // Process list items: strip "*" or "-" or "." bullets, but keep the text
+      // e.g. "* Item" -> "Item", "** Subitem" -> "Subitem"
+      const listMatch = trimmed.match(/^[*.-]+\s+(.+)$/);
+      if (listMatch) {
+        processed = listMatch[1];
+      }
+    }
+
+    cleanedLines.push(processed);
+  }
+
+  let text = cleanedLines.join(' ');
+
+  // 2. Replace inline formatting
+  // Wikilinks: [[target|label]] -> label, [[target]] -> target
+  text = text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, display) => {
+    return display || target;
+  });
+
+  // Asciidoc/Markdown Links: link:url[label] or http://url[label] -> label (or url if label is empty)
+  text = text.replace(/(?:link:|https?:\/\/)[^\s\[]+\[([^\]]*)\]/g, (_, label) => {
+    return label || '';
+  });
+
+  // Asciidoc/Markdown image/video/audio macros: image:url[alt] -> alt
+  text = text.replace(/(?:image|video|audio)::?[^\s\[]+\[([^\]]*)\]/g, (_, alt) => {
+    return alt || '';
+  });
+
+  // Inline formatting:
+  // Bold: *bold* -> bold
+  text = text.replace(/\*([^*]+)\*/g, '$1');
+  // Italic: _italic_ -> italic
+  text = text.replace(/_([^_]+)_/g, '$1');
+  // Monospace: `mono` -> mono, +mono+ -> mono
+  text = text.replace(/`([^`]+)`/g, '$1');
+  text = text.replace(/\+([^+]+)\+/g, '$1');
+
+  // Double quotes / smart quotes/formatting
+  text = text.replace(/``([^`]+)''/g, '"$1"');
+  text = text.replace(/`([^`]+)'/g, "'$1'");
+
+  // Collapse multiple spaces into one and trim
+  return text.replace(/\s+/g, ' ').trim();
+}
+

@@ -42,7 +42,7 @@ export function safeImageUrl(url: string | null | undefined): string | null {
   const trimmed = url.trim()
   if (!trimmed) return null
   if (!isSecurePage()) return trimmed
-  if (trimmed.startsWith('http://')) return null
+  if (trimmed.toLowerCase().startsWith('http://')) return null
   return trimmed
 }
 
