@@ -8,7 +8,7 @@
   import { loadRelayList } from '@nostr/gadgets/lists';
   import { normalizeIdentifier } from '@nostr/tools/nip54';
 
-  import { wot, wikiKind, reactionKind, userWikiRelays } from '$lib/nostr';
+  import { wot, wikiKind, reactionKind, userWikiRelays, muteList } from '$lib/nostr';
   import type { ArticleCard, SearchCard, Card } from '$lib/types';
   import { addUniqueTaggedReplaceable, getTagOr, next, unique } from '$lib/utils';
   import { DEFAULT_SEARCH_RELAYS } from '$lib/defaults';
@@ -36,6 +36,7 @@ import { sanitizeRelayUrl } from '$lib/security';
   let query = $state((card as SearchCard).data);
   let seenCache: { [id: string]: string[] } = {};
   let results = $state<NostrEvent[]>([]);
+  let filteredResults = $derived(results.filter((result) => !$muteList.has(result.pubkey)));
   let searchReactions = $state<{ [aCoordinate: string]: NostrEvent[] }>({});
 
   // close handlers
@@ -218,6 +219,7 @@ import { sanitizeRelayUrl } from '$lib/security';
         {
           id: 'find-exactmatch',
           onevent(evt) {
+            if ($muteList.has(evt.pubkey)) return;
             tried = true;
 
             const shouldRedirect = searchCard.redirect !== false;
@@ -265,6 +267,7 @@ import { sanitizeRelayUrl } from '$lib/security';
       {
         id: 'find-search',
         onevent(evt) {
+          if ($muteList.has(evt.pubkey)) return;
           if (addUniqueTaggedReplaceable(results, evt)) update();
         },
         oneose,
@@ -363,13 +366,13 @@ import { sanitizeRelayUrl } from '$lib/security';
     bind:textContent={query}
   ></span>"
 </div>
-{#each results as result (result.id)}
+{#each filteredResults as result (result.id)}
   <ArticleListItem event={result} {openArticle} />
 {/each}
 {#if tried}
   <div class="px-4 py-4 bg-white border-2 border-stone rounded-lg mt-4">
     <p class="mb-2 mt-0">
-      {results.length < 1 ? "Can't find this article." : "Didn't find what you were looking for?"}
+      {filteredResults.length < 1 ? "Can't find this article." : "Didn't find what you were looking for?"}
     </p>
     <button
       onclick={() => {

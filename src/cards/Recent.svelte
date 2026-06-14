@@ -9,7 +9,8 @@
     account,
     wot,
     getBasicUserWikiRelays,
-    userWikiRelays
+    userWikiRelays,
+    muteList
   } from '$lib/nostr';
   import type { ArticleCard, Card } from '$lib/types';
   import { addUniqueTaggedReplaceable, getTagOr, next } from '$lib/utils';
@@ -27,6 +28,7 @@ import { pool } from '@nostr/gadgets/global';
   let { createChild }: Props = $props();
   let seenCache: { [id: string]: string[] } = {};
   let results = $state<Event[]>([]);
+  let filteredResults = $derived(results.filter((result) => !$muteList.has(result.pubkey)));
 
   const feeds = [normalFeed, followsFeed];
   let current = $state(0);
@@ -94,30 +96,38 @@ import { pool } from '@nostr/gadgets/global';
     let exited = false;
 
     let subc: SubCloser;
+    let unsubMute = () => {};
     let wotsubclose = wot.subscribe((wot) => {
-      if (exited) {
-        return;
-      }
+      unsubMute();
+      unsubMute = muteList.subscribe((mutes) => {
+        if (exited) {
+          return;
+        }
+        if (subc) subc.close();
 
-      const eligibleKeys = Object.entries(wot)
-        .filter(([_, v]) => v > 170)
-        .map(([k]) => k);
+        const eligibleKeys = Object.entries(wot)
+          .filter(([_, v]) => v > 170)
+          .map(([k]) => k)
+          .filter((k) => !mutes.has(k));
 
-      subc = subscribeAllOutbox(
-        eligibleKeys,
-        { kinds: [wikiKind], limit: 20 },
-        { id: 'alloutbox', onevent, receivedEvent }
-      );
+        subc = subscribeAllOutbox(
+          eligibleKeys,
+          { kinds: [wikiKind], limit: 20 },
+          { id: 'alloutbox', onevent, receivedEvent }
+        );
+      });
     });
 
     return () => {
       exited = true;
       wotsubclose();
+      unsubMute();
       subc?.close?.();
     };
   }
 
   function onevent(evt: NostrEvent) {
+    if ($muteList.has(evt.pubkey)) return;
     if (addUniqueTaggedReplaceable(results, evt)) update();
   }
 
@@ -164,7 +174,7 @@ import { pool } from '@nostr/gadgets/global';
 {/if}
 
 <div class="space-y-4">
-  {#each results as result (result.id)}
+  {#each filteredResults as result (result.id)}
     <ArticleListItem event={result} {openArticle} />
   {/each}
 </div>

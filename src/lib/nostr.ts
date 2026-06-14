@@ -60,6 +60,8 @@ import {
   loadRelayList,
   loadWikiAuthors,
   loadWikiRelays,
+  loadMuteList,
+  type MutedEntity,
   type Result
 } from '@nostr/gadgets/lists';
 import { loadNostrUser, type NostrUser } from '@nostr/gadgets/metadata';
@@ -227,6 +229,30 @@ const unsub = account.subscribe((account) => {
 // ensure these subscriptions are always on
 account.subscribe(() => {});
 wot.subscribe(() => {});
+
+export const muteList = derived(
+  account,
+  (account, set) => {
+    if (account) {
+      loadMuteList(account.pubkey)
+        .then((res) => {
+          const mutedPubkeys = res.items
+            .filter((item) => item.label === 'pubkey')
+            .map((item) => item.value);
+          set(new Set(mutedPubkeys));
+        })
+        .catch((err) => {
+          console.error('Failed to load mute list', err);
+          set(new Set());
+        });
+    } else {
+      set(new Set());
+    }
+  },
+  new Set<string>()
+);
+
+muteList.subscribe(() => {});
 
 export const userWikiRelays = derived(
   account,
