@@ -96,6 +96,13 @@
   let importNsecValue = $state('');
   let signerReady = $state(hasActiveSigner());
 
+  $effect(() => {
+    if ($account && signerReady) {
+      void syncDashboardListsFromRelays($account.pubkey);
+      void fetchPrivateTagsFromRelays($account.pubkey);
+    }
+  });
+
   onMount(() => {
     signerReady = hasActiveSigner();
     loadDashboardData();
@@ -107,17 +114,9 @@
     });
     hasStoredPasskey = hasStoredPasskeyIdentity();
 
-    const unsubAccount = account.subscribe((acc) => {
-      if (acc && signerReady) {
-        void syncDashboardListsFromRelays(acc.pubkey);
-        void fetchPrivateTagsFromRelays(acc.pubkey);
-      }
-    });
-
     return () => {
       window.removeEventListener('storage', loadDashboardData);
       window.removeEventListener('wikistr:dashboard-update', loadDashboardData);
-      unsubAccount();
     };
   });
 
