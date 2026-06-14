@@ -1,5 +1,6 @@
 import { normalizeIdentifier } from '@nostr/tools/nip54';
 import type { NostrEvent } from '@nostr/tools/pure';
+import { decode } from '@nostr/tools/nip19';
 
 export function formatDate(unixtimestamp: number) {
   const months = [
@@ -242,5 +243,63 @@ export function cleanArticlePreview(content: string): string {
 
   // Collapse multiple spaces into one and trim
   return text.replace(/\s+/g, ' ').trim();
+}
+
+export function extractATags(content: string, authorPubkey: string, wikiKind: number = 30023): string[][] {
+  const tags: string[][] = [];
+  const seen = new Set<string>();
+
+  // 1. Parse wikilinks: [[target]] or [[target|display]]
+  const wikilinkRegex = /\[\[(.*?)\]\]/g;
+  let match;
+  while ((match = wikilinkRegex.exec(content)) !== null) {
+    const rawTarget = match[1].split('|')[0].trim();
+    if (!rawTarget) continue;
+
+    // Check if the wikilink target is an naddr or contains a nostr: link
+    if (rawTarget.startsWith('nostr:naddr1') || rawTarget.startsWith('naddr1')) {
+      const naddrStr = rawTarget.replace('nostr:', '');
+      try {
+        const decoded = decode(naddrStr);
+        if (decoded.type === 'naddr') {
+          const aTagValue = `${decoded.data.kind}:${decoded.data.pubkey}:${decoded.data.identifier}`;
+          if (!seen.has(aTagValue)) {
+            seen.add(aTagValue);
+            tags.push(['a', aTagValue, decoded.data.relays?.[0] || '']);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to decode naddr in wikilink:', e);
+      }
+    } else {
+      // Standard wikilink, relative to the author
+      const normalized = normalizeIdentifier(rawTarget);
+      const aTagValue = `${wikiKind}:${authorPubkey}:${normalized}`;
+      if (!seen.has(aTagValue)) {
+        seen.add(aTagValue);
+        tags.push(['a', aTagValue, '']);
+      }
+    }
+  }
+
+  // 2. Parse raw or markdown nostr:naddr1... links in content
+  const naddrRegex = /(?:nostr:)?(naddr1[a-zA-Z0-9]+)/g;
+  while ((match = naddrRegex.exec(content)) !== null) {
+    const naddrStr = match[1];
+    try {
+      const decoded = decode(naddrStr);
+      if (decoded.type === 'naddr') {
+        const aTagValue = `${decoded.data.kind}:${decoded.data.pubkey}:${decoded.data.identifier}`;
+        if (!seen.has(aTagValue)) {
+          seen.add(aTagValue);
+          tags.push(['a', aTagValue, decoded.data.relays?.[0] || '']);
+        }
+      }
+    } catch (e) {
+      // Ignore invalid decodes from random strings matching pattern
+    }
+  }
+
+  return tags;
 }
 

@@ -16,7 +16,8 @@
     turnWikilinksIntoAsciidocLinks,
     appendLinkMacroToNostrLinks,
     unique,
-    urlWithoutScheme
+    urlWithoutScheme,
+    extractATags
   } from '$lib/utils';
   import { filterSecureRelays } from '$lib/security';
   import { pool } from '@nostr/gadgets/global';
@@ -193,6 +194,11 @@
     const parsedTags = getParsedTags();
     parsedTags.forEach((tag) => {
       eventTemplate.tags.push(['t', tag]);
+    });
+
+    const aTags = extractATags(eventTemplate.content, $account?.pubkey || '', wikiKind);
+    aTags.forEach((aTag) => {
+      eventTemplate.tags.push(aTag);
     });
 
     try {

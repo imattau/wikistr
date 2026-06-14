@@ -570,6 +570,7 @@
         [
           {
             kinds: [wikiKind],
+            authors: [pubkey],
             '#d': [dTag]
           }
         ],
