@@ -76,25 +76,35 @@ async function syncEncryptedList<T>(
   pubkey: string,
   latestByDTag: Map<string, Event>,
   dTag: string,
-  storageKey: string
-): Promise<boolean> {
+  storageKey: string,
+  publishFunc: (pubkey: string) => Promise<void>
+): Promise<void> {
   const latest = latestByDTag.get(dTag);
+  const currentStore = readVersionedStore<T>(storageKey, []);
+
   if (!latest || !latest.content) {
-    return false;
+    if (currentStore.items.length > 0) {
+      await publishFunc(pubkey);
+    }
+    return;
   }
 
-  try {
-    const plaintext = await signer.decrypt(pubkey, latest.content);
-    const parsed = JSON.parse(plaintext);
-    const items = Array.isArray(parsed) ? (parsed as T[]) : [];
-    const changed = replaceStoredListIfNewer(storageKey, items, latest.created_at * 1000);
-    if (changed && typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('wikistr:dashboard-update'));
+  const relayUpdatedAt = latest.created_at * 1000;
+
+  if (relayUpdatedAt > currentStore.updatedAt) {
+    try {
+      const plaintext = await signer.decrypt(pubkey, latest.content);
+      const parsed = JSON.parse(plaintext);
+      const items = Array.isArray(parsed) ? (parsed as T[]) : [];
+      writeVersionedStore(storageKey, items, relayUpdatedAt);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('wikistr:dashboard-update'));
+      }
+    } catch (e) {
+      console.error(`Failed to sync encrypted dashboard list ${dTag}`, e);
     }
-    return changed;
-  } catch (e) {
-    console.error(`Failed to sync encrypted dashboard list ${dTag}`, e);
-    return false;
+  } else if (relayUpdatedAt < currentStore.updatedAt) {
+    await publishFunc(pubkey);
   }
 }
 
@@ -134,8 +144,8 @@ export async function syncDashboardListsFromRelays(pubkey: string): Promise<void
   try {
     const latestByDTag = await fetchLatestDashboardListEvents(pubkey);
     await Promise.all([
-      syncEncryptedList<DashboardPinnedItem>(pubkey, latestByDTag, PINNED_LIST_DTAG, PINNED_STORAGE_KEY),
-      syncEncryptedList<DashboardHistoryItem>(pubkey, latestByDTag, HISTORY_LIST_DTAG, HISTORY_STORAGE_KEY)
+      syncEncryptedList<DashboardPinnedItem>(pubkey, latestByDTag, PINNED_LIST_DTAG, PINNED_STORAGE_KEY, publishPinnedDashboardList),
+      syncEncryptedList<DashboardHistoryItem>(pubkey, latestByDTag, HISTORY_LIST_DTAG, HISTORY_STORAGE_KEY, publishRecentDashboardList)
     ]);
   } catch (e) {
     console.error('Failed to sync dashboard lists from relays', e);
