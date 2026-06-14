@@ -579,6 +579,15 @@
           onevent(evt) {
             if (!historyEvents.some((h) => h.id === evt.id)) {
               historyEvents = [...historyEvents, evt].sort((a, b) => b.created_at - a.created_at);
+              
+              const historyKey = `wikistr:history:${pubkey}:${dTag}`;
+              idbkv.get(historyKey).then((localHistory) => {
+                const history = Array.isArray(localHistory) ? localHistory : [];
+                if (!history.some((h) => h.id === evt.id)) {
+                  const updated = [...history, evt].sort((a, b) => b.created_at - a.created_at);
+                  idbkv.set(historyKey, updated);
+                }
+              });
             }
           }
         }
