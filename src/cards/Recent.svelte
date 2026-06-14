@@ -32,14 +32,8 @@ import { pool } from '@nostr/gadgets/global';
   let current = $state(0);
 
   const update = debounce(() => {
-    // sort by an average of newness and wotness
-    results.sort((a, b) => {
-      const wotA = $wot[a.pubkey] || 0;
-      const wotB = $wot[b.pubkey] || 0;
-      let wotAvg = (wotA + wotB) / 2 || 1;
-      let tsAvg = (a.created_at + b.created_at) / 2;
-      return wotB / wotAvg + b.created_at / tsAvg - (wotA / wotAvg + a.created_at / tsAvg);
-    });
+    // sort by most recent first
+    results.sort((a, b) => b.created_at - a.created_at);
     results = results;
     seenCache = seenCache;
   }, 500);
